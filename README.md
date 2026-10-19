@@ -158,12 +158,3 @@ embodigen validate --episode out/episodes/franka-0000
 - **验证器靠颜色分割**：换材质要改参考色，真实实现应换成关键点跟踪。
 - **只有一个抓放模板**：移动与人形只验证了接口和动作空间。
 
-这些都能替换，接口在 `src/embodigen/modules/base.py`。
-
-<p align="center">
-  <sub>
-    <a href="docs/index.html">展示页</a> ·
-    <a href="https://wellkilo.github.io/embodigen/">在线预览</a> ·
-    <code>python3 -m unittest discover -s tests</code>
-  </sub>
-</p>
