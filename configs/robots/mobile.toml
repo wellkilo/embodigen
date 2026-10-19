@@ -1,0 +1,8 @@
+name = "mobile"
+morphology = "mobile"
+dof = 3
+action_dim = 4
+reach = 1.20
+gripper_open = 0.04
+urdf = "vendor/mobile/base_plus_arm.urdf"
+joint_names = ["base_x", "base_y", "base_yaw", "gripper"]

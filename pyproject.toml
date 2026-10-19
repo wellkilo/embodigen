@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "embodigen"
+version = "0.1.0"
+description = "Task description in, label-exact photorealistic dataset out."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "TBD" }
+authors = [{ name = "EmbodiGen contributors" }]
+keywords = ["embodied-ai", "robot-learning", "synthetic-data", "sim2real", "lerobot"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# The core pipeline is standard-library only on purpose: clone, run, inspect.
+# Heavy backends stay optional so the contract can be exercised without a GPU.
+dependencies = []
+
+[project.optional-dependencies]
+sim = ["mani-skill>=3.0.0", "sapien>=3.0.0", "torch>=2.1"]
+photoreal = ["torch>=2.1", "diffusers>=0.27", "transformers>=4.38"]
+lerobot = ["pyarrow>=14", "pillow>=10"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+embodigen = "embodigen.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

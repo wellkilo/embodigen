@@ -1,0 +1,8 @@
+name = "humanoid"
+morphology = "humanoid"
+dof = 14
+action_dim = 7
+reach = 0.70
+gripper_open = 0.045
+urdf = "vendor/humanoid/upper_body.urdf"
+joint_names = ["l_shoulder_pitch", "l_shoulder_roll", "l_elbow", "r_shoulder_pitch", "r_shoulder_roll", "r_elbow", "gripper"]
