@@ -71,7 +71,9 @@ class PipelineTest(unittest.TestCase):
             scene, gt, rendered = read_episode(episode.root)
             report = pipeline.validator.score(rendered, gt, scene, 12.0)
             self.assertTrue(report.passed)
-            self.assertAlmostEqual(report.p95_error_mm, episode.fidelity.p95_error_mm, places=6)
+            # Labels are stored to the micron, so re-validation from disk lands
+            # within a hundredth of a millimetre of the in-memory score.
+            self.assertAlmostEqual(report.p95_error_mm, episode.fidelity.p95_error_mm, places=2)
 
 
 if __name__ == "__main__":

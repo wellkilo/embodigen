@@ -69,13 +69,26 @@ class LeRobotPacker:
             rows.append(
                 {
                     "frame_index": i,
-                    "timestamp": gt.t,
-                    "action": list(gt.action),
-                    "observation.state.eef": list(gt.eef),
-                    "observation.state.gripper": gt.gripper,
-                    "observation.object.cube": list(gt.objects.get("cube", (0, 0, 0))),
-                    "fidelity.drift_px": pframe.drift_px,
+                    "timestamp": round(gt.t, 4),
                     "language_instruction": episode.task.instruction,
+                    "frames": {
+                        "photoreal": f"frames/photoreal/{stem}.png",
+                        "white_model": f"frames/white/{stem}.png",
+                        "depth": f"frames/depth/{stem}.f32",
+                        "segmentation": f"frames/seg/{stem}.u16",
+                    },
+                    # Labels keep micron precision: enough to round-trip a
+                    # re-validation, short enough to read in a JSONL row.
+                    "action": [round(v, 6) for v in gt.action],
+                    "observation": {
+                        "eef_position": [round(v, 6) for v in gt.eef],
+                        "gripper_width": round(gt.gripper, 6),
+                        "object_positions": {
+                            name: [round(c, 6) for c in pos]
+                            for name, pos in gt.objects.items()
+                        },
+                    },
+                    "fidelity": {"drift_px": pframe.drift_px},
                 }
             )
 
@@ -184,9 +197,12 @@ def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealR
                 rgb=white,
                 depth=depth,
                 seg=seg,
-                eef=tuple(row["observation.state.eef"]),
-                gripper=row["observation.state.gripper"],
-                objects={"cube": tuple(row["observation.object.cube"])},
+                eef=tuple(row["observation"]["eef_position"]),
+                gripper=row["observation"]["gripper_width"],
+                objects={
+                    name: tuple(pos)
+                    for name, pos in row["observation"]["object_positions"].items()
+                },
                 action=tuple(row["action"]),
             )
         )
@@ -197,7 +213,7 @@ def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealR
                 {
                     "t": row["timestamp"],
                     "rgb": (root / f"frames/photoreal/{i:03d}.rgb").read_bytes(),
-                    "drift_px": row.get("fidelity.drift_px", 0.0),
+                    "drift_px": row.get("fidelity", {}).get("drift_px", 0.0),
                 },
             )()
         )
