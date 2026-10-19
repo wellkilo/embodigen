@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EmbodiGen — 任务描述进，带标签的真实画面出</title>
+<meta name="description" content="EmbodiGen 是具身数据引擎的参考实现：引擎持有精确真值，视频模型负责真实外观，验证器证明两者仍然对齐。" />
+<meta name="theme-color" content="#08090c" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2308090c'/%3E%3Crect x='7' y='7' width='18' height='18' fill='none' stroke='%232f7bff' stroke-width='2'/%3E%3Crect x='13' y='13' width='6' height='6' fill='%232f7bff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<canvas id="field" aria-hidden="true"></canvas>
+<div class="glow" id="glow" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="topbar">
+  <a class="brand" href="#top" aria-label="EmbodiGen 首页">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="brand-text">EMBODIGEN</span>
+  </a>
+  <nav class="nav">
+    <a href="#pipeline">流程</a>
+    <a href="#compare">对齐</a>
+    <a href="#fidelity">认证</a>
+    <a href="#run">运行</a>
+    <a class="nav-gh" href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">GITHUB<span aria-hidden="true"> ↗</span></a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <!-- 00 · HERO -->
+  <section class="hero">
+    <div class="shell hero-inner">
+      <p class="eyebrow" data-reveal>EMBODIED DATA ENGINE <span class="sep">/</span> v0.1</p>
+      <h1 data-reveal>
+        <span class="line">任务描述进</span>
+        <span class="line"><em>带标签的真实画面</em>出</span>
+      </h1>
+      <p class="lede" data-reveal>
+        引擎持有世界状态，所以动作、位姿、分割都是精确真值；<br class="br-wide" />
+        视频模型只管把白模画得像真的；验证器负责证明两者没有走样。
+      </p>
+      <div class="cta" data-reveal>
+        <a class="btn primary" href="#pipeline">看完整链路</a>
+        <a class="btn ghost" href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">源码仓库 <span aria-hidden="true">↗</span></a>
+      </div>
+      <dl class="stats" data-reveal>
+        <div><dt>6</dt><dd>可替换模块</dd></div>
+        <div><dt>0</dt><dd>第三方依赖</dd></div>
+        <div><dt><span id="stat-p95">1.59</span><small>mm</small></dt><dd>忠实度 p95</dd></div>
+      </dl>
+    </div>
+    <div class="scroll-cue" aria-hidden="true">
+      <span class="cue-line"></span>
+      <span class="cue-text">SCROLL</span>
+    </div>
+  </section>
+
+  <!-- 01 · GAP -->
+  <section class="section" id="gap">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>01 — THE GAP</p>
+        <h2 data-reveal>两条扩数据的路，<br />各缺一半。</h2>
+      </header>
+
+      <div class="gap-grid">
+        <article class="gap-card" data-reveal>
+          <span class="card-index">01</span>
+          <h3>纯仿真</h3>
+          <p class="card-tag">标签精确 · 画面是 CG</p>
+          <p class="card-body">深度、分割、动作都是算出来的。但渲染太干净，策略迁到真机时，视觉差距直接吃掉精度。</p>
+        </article>
+        <article class="gap-card" data-reveal>
+          <span class="card-index">02</span>
+          <h3>视频生成</h3>
+          <p class="card-tag">画面真实 · 标签靠估计</p>
+          <p class="card-body">画面足够像真机，但动作只能从光流或逆动力学里反推。估出来的标签，撑不起策略训练。</p>
+        </article>
+      </div>
+
+      <p class="pivot" data-reveal>
+        所以把两件事拆开：<em>真值</em>交给引擎，<em>外观</em>交给渲染器，<em>一致性</em>交给验证器。
+      </p>
+    </div>
+  </section>
+
+  <!-- 02 · PIPELINE -->
+  <section class="section pipeline" id="pipeline">
+    <div class="shell pipeline-grid">
+      <div class="pipeline-side">
+        <p class="eyebrow">02 — PIPELINE</p>
+        <h2>一条链路，<br />六次交接。</h2>
+        <p class="side-note">每一段都是独立接口。换引擎、换渲染器，其余模块一行不动。</p>
+        <div class="pipe-meter" aria-hidden="true">
+          <span class="pipe-fill" id="pipe-fill"></span>
+        </div>
+        <p class="pipe-label"><span id="pipe-count">01</span> / 06</p>
+      </div>
+
+      <ol class="stages" id="stages">
+        <li class="stage" data-stage>
+          <span class="s-dot" aria-hidden="true"></span>
+          <span class="s-index">01</span>
+          <div class="s-body">
+            <div class="s-head"><h3>SceneGenerator</h3><span class="s-io">TASK → SCENE</span></div>
+            <p>把一句话变成可执行的场景：物体、摆放、相机、成功判据，再检查任务在物理上确实做得成。</p>
+            <p class="s-stack"><span>现在</span> 模板 + 参数化 <span>生产</span> 代码智能体</p>
+          </div>
+        </li>
+        <li class="stage" data-stage>
+          <span class="s-dot" aria-hidden="true"></span>
+          <span class="s-index">02</span>
+          <div class="s-body">
+            <div class="s-head"><h3>TrajectoryGen</h3><span class="s-io">SCENE → MOTION</span></div>
+            <p>规划出一条能完成任务的轨迹。动作空间的维度由本体决定，规划逻辑与形态无关。</p>
+            <p class="s-stack"><span>现在</span> 航点插值 <span>生产</span> ManiSkill3 规划 / MimicGen</p>
+          </div>
+        </li>
+        <li class="stage" data-stage>
+          <span class="s-dot" aria-hidden="true"></span>
+          <span class="s-index">03</span>
+          <div class="s-body">
+            <div class="s-head"><h3>GTExporter</h3><span class="s-io">SCENE + MOTION → TRUTH</span></div>
+            <p>逐帧导出白模 RGB、深度、实例分割、物体与关节位姿、相机内外参。全部由几何算出，不是估计值。</p>
+            <p class="s-stack"><span>现在</span> 软件光线投射 <span>生产</span> ManiSkill3 / SAPIEN</p>
+          </div>
+        </li>
+        <li class="stage" data-stage>
+          <span class="s-dot" aria-hidden="true"></span>
+          <span class="s-index">04</span>
+          <div class="s-body">
+            <div class="s-head"><h3>Photorealizer</h3><span class="s-io">TRUTH → LOOK</span></div>
+            <p>白模作首帧与外观参考，深度与分割作控制条件，相机走 Plücker 嵌入。它不碰物理，只负责外观。</p>
+            <p class="s-stack"><span>现在</span> 确定性替身 <span>生产</span> Wan2.2-Fun-5B-Control</p>
+          </div>
+        </li>
+        <li class="stage" data-stage>
+          <span class="s-dot" aria-hidden="true"></span>
+          <span class="s-index">05</span>
+          <div class="s-body">
+            <div class="s-head"><h3>FidelityValidator</h3><span class="s-io">LOOK + TRUTH → VERDICT</span></div>
+            <p>只读渲染像素，把夹爪找回来，和真值投到同一相机上比重投影误差。过阈值才认证，不过就重渲。</p>
+            <p class="s-stack"><span>现在</span> 颜色分割 + 重投影 <span>生产</span> 关键点跟踪 / 逆动力学</p>
+          </div>
+        </li>
+        <li class="stage" data-stage>
+          <span class="s-dot" aria-hidden="true"></span>
+          <span class="s-index">06</span>
+          <div class="s-body">
+            <div class="s-head"><h3>DatasetPacker</h3><span class="s-io">ALL → DATASET</span></div>
+            <p>写成 LeRobot 形状的目录：帧、动作、指令、相机、分割、忠实度与生成配置的哈希，全部随样本走。</p>
+            <p class="s-stack"><span>现在</span> PNG + JSONL <span>生产</span> mp4 + parquet</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 03 · RENDER -->
+  <section class="section film-section" id="render">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>03 — RENDER</p>
+        <h2 data-reveal>同一帧，两种世界。</h2>
+      </header>
+
+      <div class="film-shell" data-reveal>
+        <div class="film-frame">
+          <div class="film" id="film" role="img" aria-label="白模与照片级渲染的帧序列"></div>
+          <span class="film-badge" id="film-badge">WHITE MODEL</span>
+          <span class="film-count" id="film-count">01 / 20</span>
+        </div>
+        <div class="film-bar">
+          <div class="switch" role="group" aria-label="切换渲染模式">
+            <button type="button" class="on" data-sheet="white">白模</button>
+            <button type="button" data-sheet="photoreal">照片级</button>
+          </div>
+          <p class="film-note">160 px · 20 帧 · 8 fps · 管线真实产出</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 · ALIGNMENT -->
+  <section class="section" id="compare">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>04 — ALIGNMENT</p>
+        <h2 data-reveal>拖动分割线，<br />看外观被穿上去。</h2>
+        <p class="section-lede" data-reveal>左边是引擎的白模画面，右边是照片级化之后。位置没有动过——外观是被渲染上去的，不是被生成出来的。</p>
+      </header>
+
+      <div class="slider" id="slider" data-reveal>
+        <img class="slider-base" src="assets/hero-photoreal.png" alt="照片级渲染结果" />
+        <div class="slider-clip">
+          <img src="assets/hero-white.png" alt="同一帧的白模渲染" />
+        </div>
+        <span class="slider-tag left">WHITE MODEL</span>
+        <span class="slider-tag right">PHOTOREAL</span>
+        <div class="slider-handle" id="handle" role="slider" tabindex="0"
+             aria-label="对比分割线" aria-valuemin="0" aria-valuemax="100" aria-valuenow="52">
+          <span class="handle-grip" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <div class="conditions" data-reveal>
+        <figure class="cond-fig">
+          <img src="assets/hero-depth.png" alt="深度通道" />
+          <figcaption>DEPTH</figcaption>
+        </figure>
+        <div class="cond-copy">
+          <p>渲染器拿到的不只是白模。逐帧深度、实例分割、相机位姿一起进去，几何才是主导条件。</p>
+          <ul class="chips">
+            <li>DEPTH</li>
+            <li>SEGMENTATION</li>
+            <li>PLÜCKER RAYS</li>
+            <li>FIRST FRAME</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 · CERTIFICATION -->
+  <section class="section" id="fidelity">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>05 — CERTIFICATION</p>
+        <h2 data-reveal>不达标，就不入库。</h2>
+        <p class="section-lede" data-reveal>验证器只读渲染出来的像素和相机内参：把夹爪从画面里找回来，和引擎真值投到同一相机上比。误差单位是毫米。</p>
+      </header>
+
+      <div class="verdicts">
+        <article class="verdict is-bad" data-reveal>
+          <header class="v-head">
+            <span class="v-name">DRIFTED RENDER</span>
+            <span class="pill reject">REJECT</span>
+          </header>
+          <p class="v-big"><span data-count="25.39" data-decimals="2">0</span><small>mm</small></p>
+          <p class="v-sub">p95 重投影误差 · 注入 25 mm 几何漂移</p>
+          <div class="bars" id="bars-bad" aria-hidden="true"></div>
+          <p class="v-foot">夹爪和方块被一起挪了，动作标签失效——即使画面看起来很真。</p>
+        </article>
+
+        <article class="verdict is-good" data-reveal>
+          <header class="v-head">
+            <span class="v-name">CERTIFIED RENDER</span>
+            <span class="pill accept">PASS</span>
+          </header>
+          <p class="v-big"><span data-count="1.83" data-decimals="2">0</span><small>mm</small></p>
+          <p class="v-sub">p95 重投影误差 · 阈值 12 mm</p>
+          <div class="bars" id="bars-good" aria-hidden="true"></div>
+          <p class="v-foot">同样的渲染器，几何条件加严之后通过，样本才允许写进数据集。</p>
+        </article>
+      </div>
+
+      <p class="fine" data-reveal>重试不是再渲一次碰运气：每一轮都加严几何条件，种子与权重写进 provenance，事后可以审计。</p>
+    </div>
+  </section>
+
+  <!-- 06 · ARTIFACT -->
+  <section class="section" id="artifact">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>06 — ARTIFACT</p>
+        <h2 data-reveal>一条样本，自包含。</h2>
+      </header>
+
+      <div class="artifact-grid">
+        <pre class="tree" data-reveal><span class="t-dir">franka-0000/</span>
+├─ <span class="t-dir">meta/</span>
+│  ├─ info.json        <span class="t-dim">特征描述</span>
+│  ├─ provenance.json  <span class="t-dim">引擎 · 权重 · 种子</span>
+│  ├─ fidelity.json    <span class="t-dim">逐帧误差与判定</span>
+│  └─ scene.json       <span class="t-dim">相机 · 物体 · 判据</span>
+├─ <span class="t-dir">data/chunk-000/</span>
+│  └─ episode_000000.jsonl
+└─ <span class="t-dir">frames/</span>
+   ├─ photoreal/   <span class="t-dim">png + rgb</span>
+   ├─ white/       <span class="t-dim">png + rgb</span>
+   ├─ depth/       <span class="t-dim">f32 · 平面 Z</span>
+   └─ seg/         <span class="t-dim">u16 实例 id</span></pre>
+
+        <div class="artifact-side" data-reveal>
+          <ul class="chips large">
+            <li>真实视频帧</li>
+            <li>动作序列</li>
+            <li>语言指令</li>
+            <li>相机内外参</li>
+            <li>实例分割</li>
+            <li>忠实度元数据</li>
+            <li>配置哈希</li>
+          </ul>
+          <dl class="prov">
+            <div><dt>ENGINE</dt><dd>software-raycast-v0</dd></div>
+            <div><dt>PHOTOREALIZER</dt><dd>mock-photoreal-v0</dd></div>
+            <div><dt>VALIDATOR</dt><dd>keypoint-appearance-v0</dd></div>
+            <div><dt>FORMAT</dt><dd>LeRobot-shaped · v0.1</dd></div>
+          </dl>
+          <p class="artifact-note">整个目录自包含：只凭它就能重算忠实度，不需要再跑一遍引擎。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 · MORPHOLOGY -->
+  <section class="section" id="bodies">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>07 — MORPHOLOGY</p>
+        <h2 data-reveal>换一个本体，<br />不改一条管线。</h2>
+        <p class="section-lede" data-reveal>形态差异只落在两处配置：本体（URDF 与动作空间）和任务。其余模块对形态透明。</p>
+      </header>
+
+      <div class="body-grid" id="body-grid"></div>
+    </div>
+  </section>
+
+  <!-- 08 · RUN -->
+  <section class="section" id="run">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>08 — RUN</p>
+        <h2 data-reveal>一条命令，<br />从一句话到一条样本。</h2>
+      </header>
+
+      <div class="terminal" data-reveal>
+        <div class="term-bar">
+          <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <em>zsh — embodigen</em>
+          <button class="copy" id="copy" type="button">复制</button>
+        </div>
+        <pre><code id="cmd">pip install -e .
+embodigen gen --task "把红色方块放进盒子" --out out --resolution 96
+embodigen validate --episode out/episodes/franka-0000</code></pre>
+      </div>
+
+      <p class="run-note" data-reveal>核心只用标准库：没有 numpy、没有 GPU 也能跑完整条链路；真实后端通过 extras 挂进来。</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="shell footer-inner">
+    <div class="foot-left">
+      <span class="mark small" aria-hidden="true"></span>
+      <span>EmbodiGen · 具身数据引擎</span>
+    </div>
+    <div class="foot-right">
+      <a href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/wellkilo/embodigen/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <span class="dim">私有仓库 · 许可待定</span>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/metrics.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

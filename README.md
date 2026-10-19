@@ -4,6 +4,8 @@
 
 具身数据引擎的参考实现：仿真引擎负责持有世界状态、导出精确真值；视频生成模型只负责把白模画面渲染成真实外观；中间用验证器确认渲染之后动作标签依然成立。
 
+[![EmbodiGen 展示页](docs/assets/screens/hero.jpg)](docs/index.html)
+
 ```
 一句话任务 → 场景 → 轨迹 → 精确真值 → 照片级化 → 忠实度认证 → 数据集
 ```
@@ -50,6 +52,32 @@ python3 -m unittest discover -s tests
 
 没有装成包时，用 `PYTHONPATH=src python3 -m embodigen.cli gen ...` 等价。
 
+## 展示页
+
+[`docs/index.html`](docs/index.html) 是一个零构建的单页展示：滚动驱动的六段流程、白模与照片级的拖动对比、以及直接来自管线运行的真实指标。直接双击打开即可，或者：
+
+```bash
+python3 -m http.server 8000 -d docs
+```
+
+页面上的每个数字都来自 `scripts/build_docs_assets.py` 的一次真实运行——帧序列、对照图、误差曲线全部由它生成，页面不会和代码脱节：
+
+```bash
+python3 scripts/build_docs_assets.py --out docs/assets
+```
+
+六段流程（截图为 `docs/index.html` 的实际渲染）：
+
+[![六段流程](docs/assets/screens/pipeline.jpg)](docs/index.html)
+
+拖动分割线对比白模与照片级：
+
+[![拖动对比](docs/assets/screens/compare.jpg)](docs/index.html)
+
+忠实度认证：注入漂移的那一版被拒绝，加严几何条件后通过：
+
+[![忠实度](docs/assets/screens/fidelity.jpg)](docs/index.html)
+
 ## 它到底保证了什么
 
 一条 episode 里，**真值由引擎给，真实感由渲染器给，两者是否还对得上由验证器给**。三件事在数据结构上是分开的：
@@ -76,10 +104,12 @@ fidelity: FidelityReport     # 重投影误差、p95/max、过/不过、逐帧�
 |---|---|---|
 | 正常渲染，64px | 2.9 mm | 通过 |
 | 正常渲染，96px | 2.3 mm | 通过 |
-| 注入 3px 几何漂移，64px | 37.0 mm | 拒绝 |
-| 注入 3px 几何漂移，96px | 25.5 mm | 拒绝 |
+| 正常渲染，224px | 1.6 mm | 通过 |
+| 注入 25 mm 几何漂移，64px | 27.4 mm | 拒绝 |
+| 注入 25 mm 几何漂移，96px | 28.1 mm | 拒绝 |
+| 注入 25 mm 几何漂移，224px | 25.3 mm | 拒绝 |
 
-默认第一轮渲染会注入 3px 漂移来演示失败路径：验证器拒绝 → 加严几何条件重渲 → 通过。产物里会记录 `attempts`、`seeds` 和每一轮的 `condition_weights`，可以事后审计。
+漂移按毫米注入，所以同一个数字在 64px 和 224px 下含义相同。默认第一轮会注入 25 mm 漂移来演示失败路径：验证器拒绝 → 加严几何条件重渲 → 通过。产物里会记录 `attempts`、`seeds` 和每一轮的 `condition_weights`，可以事后审计。
 
 ## 产物结构
 

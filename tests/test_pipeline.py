@@ -12,7 +12,7 @@ class PipelineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pipeline = Pipeline(
                 PipelineConfig(
-                    out_dir=Path(tmp), resolution=32, fps=6, max_attempts=1, inject_drift_px=0.0
+                    out_dir=Path(tmp), resolution=32, fps=6, max_attempts=1, inject_drift_mm=0.0
                 )
             )
             episode = pipeline.run("把红色方块放进盒子", seed=1)
@@ -38,7 +38,7 @@ class PipelineTest(unittest.TestCase):
                     fps=6,
                     threshold_mm=12.0,
                     max_attempts=3,
-                    inject_drift_px=3.0,
+                    inject_drift_mm=25.0,
                 )
             )
             episode = pipeline.run("把红色方块放进盒子", seed=0)
@@ -52,7 +52,7 @@ class PipelineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pipeline = Pipeline(
                 PipelineConfig(
-                    out_dir=Path(tmp), resolution=32, fps=6, max_attempts=3, inject_drift_px=0.0
+                    out_dir=Path(tmp), resolution=32, fps=6, max_attempts=3, inject_drift_mm=0.0
                 )
             )
             episode = pipeline.run("把蓝色方块放进盒子", seed=0)
@@ -64,7 +64,7 @@ class PipelineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pipeline = Pipeline(
                 PipelineConfig(
-                    out_dir=Path(tmp), resolution=32, fps=6, max_attempts=1, inject_drift_px=0.0
+                    out_dir=Path(tmp), resolution=32, fps=6, max_attempts=1, inject_drift_mm=0.0
                 )
             )
             episode = pipeline.run("把红色方块放进盒子", seed=2)

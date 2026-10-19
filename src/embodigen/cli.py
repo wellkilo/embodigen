@@ -21,7 +21,7 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         fps=args.fps,
         resolution=args.resolution,
         seed=args.seed,
-        inject_drift_px=args.drift,
+        inject_drift_mm=args.drift,
         pack=not args.no_pack,
     )
     pipeline = Pipeline(cfg)
@@ -77,8 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument(
         "--drift",
         type=float,
-        default=3.0,
-        help="pixels of simulated geometry drift on the first render attempt (0 disables)",
+        default=25.0,
+        help="millimetres of simulated geometry drift on the first render attempt (0 disables)",
     )
     g.add_argument("--no-pack", action="store_true", help="skip writing the dataset")
     g.set_defaults(func=_cmd_gen)
