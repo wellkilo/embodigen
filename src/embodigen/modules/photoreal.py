@@ -30,7 +30,16 @@ def _hash_noise(x: int, y: int, seed: int) -> float:
 class MockPhotorealizer:
     name = "mock-photoreal-v0"
 
-    def __init__(self, drift_px: float = 0.0, drift_frames: tuple[int, int] = (0, 0)) -> None:
+    def __init__(
+        self,
+        drift_mm: float = 0.0,
+        drift_frames: tuple[int, int] = (0, 0),
+        drift_px: float | None = None,
+    ) -> None:
+        # Drift is specified in millimetres of world-space displacement, so the
+        # failure it simulates is the same at every render resolution. ``drift_px``
+        # remains for tests that want a fixed pixel offset.
+        self.drift_mm = drift_mm
         self.drift_px = drift_px
         self.drift_frames = drift_frames
 
@@ -47,10 +56,11 @@ class MockPhotorealizer:
         lo, hi = self.drift_frames
 
         for index, frame in enumerate(gt):
-            drifting = self.drift_px > 0 and lo <= index <= hi
-            rgb = self._shade_frame(frame, cam, palette, scene, seed, drifting)
+            drift_px = self._resolve_drift(frame, cam)
+            drifting = drift_px > 0 and lo <= index <= hi
+            rgb = self._shade_frame(frame, cam, palette, scene, seed, drift_px if drifting else 0)
             frames.append(
-                PhotorealFrame(t=frame.t, rgb=rgb, drift_px=self.drift_px if drifting else 0.0)
+                PhotorealFrame(t=frame.t, rgb=rgb, drift_px=drift_px if drifting else 0.0)
             )
 
         return PhotorealResult(
@@ -59,6 +69,14 @@ class MockPhotorealizer:
             frames=frames,
             condition_weights=dict(condition_weights),
         )
+
+    def _resolve_drift(self, frame: FrameGT, cam: CameraModel) -> float:
+        if self.drift_px is not None:
+            return float(self.drift_px)
+        if self.drift_mm <= 0:
+            return 0.0
+        z = cam.project(frame.eef)[2]
+        return self.drift_mm / 1000.0 * cam.camera.fx / max(z, 0.05)
 
     def _palette(self, scene: SceneSpec) -> dict[str, tuple[float, float, float]]:
         """Material appearance per instance name (photoreal albedo, not clay)."""
@@ -83,7 +101,7 @@ class MockPhotorealizer:
         palette: dict[str, tuple[float, float, float]],
         scene: SceneSpec,
         seed: int,
-        drifting: bool,
+        drift_px: float,
     ) -> bytes:
         w, h = cam.camera.width, cam.camera.height
         depth = list(frame.depth)
@@ -92,7 +110,7 @@ class MockPhotorealizer:
         out = bytearray(w * h * 3)
 
         moving = {label for name, label in frame.seg_labels.items() if "finger" in name or name == "cube"}
-        drift = int(round(self.drift_px)) if drifting else 0
+        drift = int(round(drift_px))
 
         if drift:
             # Rigid, local displacement of the manipulated geometry: clear the
@@ -112,8 +130,10 @@ class MockPhotorealizer:
                     p = v * w + u
                     if source_seg[p] not in moving:
                         continue
+                    # Horizontal-only shift keeps "N px" a clean proxy for
+                    # millimetres of world displacement (no sqrt(2) factor).
                     du = u + drift
-                    dv = v + drift
+                    dv = v
                     if 0 <= du < w and 0 <= dv < h:
                         q = dv * w + du
                         shifted_seg[q] = source_seg[p]
@@ -155,7 +175,11 @@ class MockPhotorealizer:
                 grain = (_hash_noise(u, v, seed) - 0.5) * 0.045
                 texture = 1.0
                 if name == "table":
-                    texture = 1.0 + 0.06 * math.sin(u * 0.55 + seed * 0.7)
+                    texture = (
+                        1.0
+                        + 0.028 * math.sin(u * 0.42 + seed * 0.7)
+                        + 0.012 * math.sin(v * 0.17 + u * 0.05)
+                    )
                 elif name == "cube":
                     texture = 1.0 + 0.03 * math.sin((u + v) * 0.8)
 

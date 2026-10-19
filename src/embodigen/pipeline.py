@@ -37,7 +37,7 @@ class PipelineConfig:
     fps: float = 8.0
     resolution: int = 64
     seed: int = 0
-    inject_drift_px: float = 3.0
+    inject_drift_mm: float = 25.0
     drift_frames: tuple[int, int] = (6, 16)
     pack: bool = True
     scene_backend: str = "template"
@@ -53,7 +53,7 @@ class PipelineConfig:
             "fps": self.fps,
             "resolution": self.resolution,
             "seed": self.seed,
-            "inject_drift_px": self.inject_drift_px,
+            "inject_drift_mm": self.inject_drift_mm,
             "backends": [
                 self.scene_backend,
                 self.trajectory_backend,
@@ -112,9 +112,9 @@ class Pipeline:
                 "segmentation": 1.0 + 0.3 * attempt,
                 "camera": 1.0,
             }
-            drift = cfg.inject_drift_px if attempt == 0 else 0.0
+            drift = cfg.inject_drift_mm if attempt == 0 else 0.0
             photorealizer = self.photorealizer_cls(
-                drift_px=drift, drift_frames=cfg.drift_frames
+                drift_mm=drift, drift_frames=cfg.drift_frames
             )
             rendered = photorealizer.render(gt, scene, weights, seed + attempt)
             report = self.validator.score(rendered, gt, scene, cfg.threshold_mm)

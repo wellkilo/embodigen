@@ -103,7 +103,10 @@ class TemplateSceneGenerator:
                 name="table",
                 kind="box",
                 center=(0.0, 0.0, -0.02),
-                half_extent=(0.30, 0.30, 0.02),
+                # Much larger than the frustum on purpose: the far edge and
+                # corners stay out of frame, so the backdrop reads as a clean
+                # studio floor instead of a floating slab in the void.
+                half_extent=(2.5, 2.5, 0.02),
                 material="table",
                 albedo=(196, 190, 178),
                 movable=False,
