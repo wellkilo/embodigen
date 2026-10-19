@@ -150,24 +150,29 @@ main,
 .mark {
   width: 14px;
   height: 14px;
-  border: 1.5px solid var(--blue);
-  position: relative;
+  display: inline-flex;
+  gap: 1.5px;
+}
+
+.mark::before,
+.mark::after {
+  content: "";
+  display: block;
+  flex: 1;
+}
+
+.mark::before {
+  background: #c9d2df;
 }
 
 .mark::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
   background: var(--blue);
 }
 
 .mark.small {
   width: 10px;
   height: 10px;
-}
-
-.mark.small::after {
-  inset: 2px;
+  gap: 1px;
 }
 
 .nav {
