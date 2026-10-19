@@ -1,4 +1,4 @@
-"""Minimal PNG writer (8-bit RGB / grayscale) on top of zlib.
+"""Minimal PNG writer (8-bit RGB / RGBA / grayscale) on top of zlib.
 
 Exists so the demo produces inspectable images without pulling Pillow in.
 The real packer uses ffmpeg/pyarrow through the ``[lerobot]`` extra.
@@ -25,7 +25,7 @@ def write_png(path: str | Path, width: int, height: int, pixels: bytes, channels
         raise ValueError(
             f"pixel buffer is {len(pixels)} bytes, expected {width * height * channels}"
         )
-    color_type = {1: 0, 3: 2}[channels]
+    color_type = {1: 0, 3: 2, 4: 6}[channels]
     stride = width * channels
     raw = bytearray()
     for y in range(height):
