@@ -7,7 +7,7 @@ name = "embodigen"
 version = "0.1.0"
 description = "Task description in, label-exact photorealistic dataset out."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # tomllib for the robot configs
 license = { text = "TBD" }
 authors = [{ name = "EmbodiGen contributors" }]
 keywords = ["embodied-ai", "robot-learning", "synthetic-data", "sim2real", "lerobot"]
