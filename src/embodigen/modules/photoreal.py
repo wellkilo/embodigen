@@ -35,6 +35,7 @@ class MockPhotorealizer:
         drift_mm: float = 0.0,
         drift_frames: tuple[int, int] = (0, 0),
         drift_px: float | None = None,
+        grain: float = 1.0,
     ) -> None:
         # Drift is specified in millimetres of world-space displacement, so the
         # failure it simulates is the same at every render resolution. ``drift_px``
@@ -42,6 +43,10 @@ class MockPhotorealizer:
         self.drift_mm = drift_mm
         self.drift_px = drift_px
         self.drift_frames = drift_frames
+        # Film grain is part of the look, but it is per-pixel noise: at small
+        # sizes with a 256-colour palette it turns into confetti, so callers
+        # (GIF export) can dial it down.
+        self.grain = grain
 
     def render(
         self,
@@ -172,7 +177,7 @@ class MockPhotorealizer:
                 ao = 0.72 + 0.28 * min(1.0, max(0.0, (1.25 - z) / 0.7))
                 shade = 0.22 + 0.95 * lam
 
-                grain = (_hash_noise(u, v, seed) - 0.5) * 0.045
+                grain = (_hash_noise(u, v, seed) - 0.5) * 0.045 * self.grain
                 texture = 1.0
                 if name == "table":
                     texture = (
