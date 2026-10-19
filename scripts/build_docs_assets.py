@@ -122,8 +122,8 @@ def main() -> int:
 
     print(f"[2/4] drifted run @ {args.size}px (rejection path)")
     drifted = run(args.size, fps=6, drift=25.0)
-    dwhite, dw, dh = sprite_sheet([f.rgb for f in drifted.gt], args.size)
-    write_png(out / "white-sheet-drift.png", dw, dh, dwhite)
+    # No drift sheet: the white model is the engine's ground truth and never
+    # moves. Drift happens downstream, in the photorealizer.
 
     print("[3/4] hero pair @ 320px")
     hero = run(320, fps=4, drift=0.0)
