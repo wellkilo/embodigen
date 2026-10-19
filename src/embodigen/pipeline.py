@@ -39,6 +39,7 @@ class PipelineConfig:
     seed: int = 0
     inject_drift_mm: float = 25.0
     drift_frames: tuple[int, int] = (6, 16)
+    grain: float = 1.0
     pack: bool = True
     scene_backend: str = "template"
     trajectory_backend: str = "waypoint"
@@ -114,7 +115,7 @@ class Pipeline:
             }
             drift = cfg.inject_drift_mm if attempt == 0 else 0.0
             photorealizer = self.photorealizer_cls(
-                drift_mm=drift, drift_frames=cfg.drift_frames
+                drift_mm=drift, drift_frames=cfg.drift_frames, grain=cfg.grain
             )
             rendered = photorealizer.render(gt, scene, weights, seed + attempt)
             report = self.validator.score(rendered, gt, scene, cfg.threshold_mm)
