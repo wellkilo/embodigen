@@ -62,6 +62,14 @@ class ContractTest(unittest.TestCase):
                     seen += 1
         self.assertGreater(seen, 0, "cube should be visible in the white-model render")
 
+    def test_every_frame_carries_a_phase_label(self):
+        phases = [f.phase for f in self.episode.gt]
+        self.assertTrue(all(phases))
+        # Phases appear in plan order and each one is a contiguous run.
+        runs = [p for i, p in enumerate(phases) if i == 0 or p != phases[i - 1]]
+        self.assertEqual(runs, ["pre_grasp", "grasp", "close", "lift", "transport",
+                                "place", "release", "retreat"])
+
     def test_feature_summary_is_lerobot_shaped(self):
         features = self.episode.feature_summary()
         self.assertIn("observation.images.photoreal", features)

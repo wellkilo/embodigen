@@ -89,6 +89,7 @@ class WaypointTrajectoryGen:
                         action=action,
                         joints=self._joints(eef, g, robot),
                         objects={"cube": cube_pos},
+                        phase=name,
                     )
                 )
             prev_eef = target

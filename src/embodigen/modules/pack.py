@@ -76,6 +76,7 @@ class LeRobotPacker:
                     "frame_index": i,
                     "timestamp": round(gt.t, 4),
                     "language_instruction": episode.task.instruction,
+                    "phase": gt.phase,
                     "frames": {
                         "photoreal": f"frames/photoreal/{stem}.png",
                         "white_model": f"frames/white/{stem}.png",
@@ -213,6 +214,7 @@ def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealR
                     for name, pos in row["observation"]["object_positions"].items()
                 },
                 action=tuple(row["action"]),
+                phase=row.get("phase", ""),
             )
         )
         pframes.append(
