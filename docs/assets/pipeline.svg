@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" role="img" aria-label="EmbodiGen 流程：任务描述 → 场景 → 轨迹 → 真值导出 → 照片级化 → 验证；通过入库，未通过加严条件重渲，重试用尽进入 rejected">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8fb6ff"/>
+    </marker>
+    <marker id="w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ff7a4d"/>
+    </marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#17c9a8"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+    .t { fill: #f2f4f7; font-size: 13px; font-weight: 600; text-anchor: middle; }
+    .s { fill: #98a3b0; font-size: 11px; text-anchor: middle; }
+    .l { font-size: 11px; text-anchor: middle; }
+    .box { fill: #12161c; stroke: rgba(255,255,255,0.18); stroke-width: 1; }
+  </style>
+  <rect width="1000" height="300" rx="16" fill="#08090c"/>
+
+  <!-- main row -->
+  <g>
+    <rect class="box" x="20" y="110" width="118" height="62" rx="10"/>
+    <text class="t" x="79" y="137">任务描述</text><text class="s" x="79" y="156">一句话</text>
+
+    <rect class="box" x="160" y="110" width="118" height="62" rx="10"/>
+    <text class="t" x="219" y="137">SceneGenerator</text><text class="s" x="219" y="156">场景 + 成功判据</text>
+
+    <rect class="box" x="300" y="110" width="118" height="62" rx="10"/>
+    <text class="t" x="359" y="137">TrajectoryGen</text><text class="s" x="359" y="156">轨迹 + 阶段标签</text>
+
+    <rect class="box" x="440" y="110" width="118" height="62" rx="10"/>
+    <text class="t" x="499" y="137">GTExporter</text><text class="s" x="499" y="156">深度 · 分割 · 位姿</text>
+
+    <rect class="box" x="580" y="110" width="118" height="62" rx="10" style="stroke:#2f7bff"/>
+    <text class="t" x="639" y="137">Photorealizer</text><text class="s" x="639" y="156">只改外观</text>
+
+    <rect class="box" x="720" y="110" width="118" height="62" rx="10" style="stroke:#8fb6ff"/>
+    <text class="t" x="779" y="137">Validator</text><text class="s" x="779" y="156">p95 ≤ 阈值 ?</text>
+
+    <rect x="870" y="110" width="110" height="62" rx="10" fill="rgba(23,201,168,0.10)" stroke="#17c9a8"/>
+    <text class="t" x="925" y="137">episodes/</text><text class="s" x="925" y="156">认证入库</text>
+
+    <rect x="720" y="226" width="118" height="54" rx="10" fill="rgba(255,122,77,0.10)" stroke="#ff7a4d"/>
+    <text class="t" x="779" y="250">rejected/</text><text class="s" x="779" y="268">留档审计</text>
+  </g>
+
+  <!-- arrows -->
+  <g stroke="#8fb6ff" stroke-width="1.4" fill="none" marker-end="url(#a)">
+    <path d="M138 141 H158"/>
+    <path d="M278 141 H298"/>
+    <path d="M418 141 H438"/>
+    <path d="M558 141 H578"/>
+    <path d="M698 141 H718"/>
+  </g>
+  <path d="M838 141 H868" stroke="#17c9a8" stroke-width="1.4" fill="none" marker-end="url(#g)"/>
+  <text class="l" x="853" y="132" fill="#17c9a8">通过</text>
+
+  <path d="M779 110 C779 52, 639 52, 639 108" stroke="#ff7a4d" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#w)"/>
+  <text class="l" x="709" y="46" fill="#ff7a4d">未通过 · 加严几何条件重渲</text>
+
+  <path d="M779 172 V224" stroke="#ff7a4d" stroke-width="1.4" fill="none" marker-end="url(#w)"/>
+  <text class="l" x="822" y="203" fill="#ff7a4d">重试用尽</text>
+
+  <text x="20" y="34" fill="#5d6875" font-size="11" letter-spacing="2">EMBODIGEN · PIPELINE</text>
+</svg>

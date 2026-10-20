@@ -83,17 +83,9 @@ EmbodiGen 把这两件事拆开：
 | **输出** | 自包含的 episode 目录：照片级帧 + 动作序列 + 阶段标签 + 精确的深度 / 分割 / 位姿 + 忠实度报告 |
 | **保证** | 标签由引擎从几何算出，不是从视频里估的；渲染器只改外观；验证器证明几何没有被带偏，**不达标的样本进不了数据集** |
 
-```mermaid
-flowchart LR
-    T["任务描述"] --> S["SceneGenerator<br/>场景 + 成功判据"]
-    S --> J["TrajectoryGen<br/>轨迹 + 阶段"]
-    J --> G["GTExporter<br/>白模 / 深度 / 分割 / 位姿"]
-    G --> P["Photorealizer<br/>只改外观"]
-    P --> V{"FidelityValidator<br/>p95 ≤ 阈值？"}
-    V -- "通过" --> D["DatasetPacker<br/>out/episodes/"]
-    V -- "未通过 · 加严几何条件重渲" --> P
-    V -- "重试用尽" --> R["out/rejected/<br/>留档审计"]
-```
+<p align="center">
+  <img src="docs/assets/pipeline.svg" width="860" alt="流程：任务描述 → 场景 → 轨迹 → 真值导出 → 照片级化 → 验证；通过入库，未通过加严条件重渲，重试用尽进入 rejected/" />
+</p>
 
 六个阶段都在 `src/embodigen/modules/` 下，各自一个接口。当前的场景、引擎和渲染器是参考实现；换成 ManiSkill3 或 Wan 只需实现对应方法并注册。产物按 LeRobot 的形状组织，可以直接接进 OpenVLA、π0、Diffusion Policy 这类训练流程：视频帧喂视觉塔，`action` 喂动作头，`phase` 做子任务监督，`fidelity` 用来筛选或加权样本。
 
