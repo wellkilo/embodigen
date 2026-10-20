@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
+import subprocess
 import sys
+import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -25,6 +29,7 @@ from embodigen.robots import load_robot  # noqa: E402
 from embodigen.types import Camera, TaskSpec  # noqa: E402
 
 SHEET_COLS = 7
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def sprite_sheet(frames: list[bytes], size: int, cols: int = SHEET_COLS) -> tuple[bytes, int, int]:
@@ -104,6 +109,87 @@ def morphology_frames(out: Path) -> list[dict]:
     return out_rows
 
 
+def r(v, n=4):
+    return [round(x, n) for x in v]
+
+
+def episode_data(episode) -> dict:
+    """Everything the live 3D viewer needs, taken from the engine's own state."""
+    rep = episode.fidelity
+    cam = episode.scene.camera
+    return {
+        "id": episode.episode_id,
+        "instruction": episode.task.instruction,
+        "fps": episode.trajectory.fps,
+        "camera": {"eye": r(cam.eye), "target": r(cam.target), "fx": cam.fx, "size": cam.width},
+        # The table is a 5 m slab in the engine; the viewer draws it as a floor.
+        "objects": [
+            {k: (r(v) if isinstance(v, tuple) and k != "albedo" else v)
+             for k, v in asdict(o).items()}
+            for o in episode.scene.objects
+            if o.name != "table"
+        ],
+        "frames": [
+            {
+                "t": f.t,
+                "phase": f.phase,
+                "eef": r(f.eef),
+                "gripper": round(f.gripper, 4),
+                "cube": r(f.objects["cube"]),
+                "action": r(f.action, 3),
+                "err_mm": None if e != e else round(e, 2),
+            }
+            for f, e in zip(episode.gt, rep.per_frame_mm)
+        ],
+        "threshold_mm": rep.threshold_mm,
+    }
+
+
+def batch_data(out: Path, count: int = 12, size: int = 96) -> dict:
+    """A real batch at default settings: every first render drifts and is caught."""
+    tiles, rows = [], []
+    for seed in range(count):
+        pipeline = Pipeline(PipelineConfig(resolution=size, fps=6, seed=seed, pack=False))
+        ep = pipeline.run("把红色方块放进盒子", seed=seed)
+        tiles.append(ep.photoreal.frames[(len(ep.gt) * 2) // 3].rgb)
+        rows.append({
+            "id": ep.episode_id,
+            "p95_mm": round(ep.fidelity.p95_error_mm, 2),
+            "attempts": ep.provenance.attempts,
+            "passed": ep.fidelity.passed,
+        })
+    cols = 6
+    sheet, w, h = sprite_sheet(tiles, size, cols)
+    write_png(out / "batch-sheet.png", w, h, sheet)
+    certified = sum(1 for row in rows if row["passed"])
+    return {
+        "src": "assets/batch-sheet.png", "cols": cols, "size": size,
+        "episodes": rows, "certified": certified, "total": len(rows),
+    }
+
+
+def cli_transcripts() -> list[dict]:
+    """Run the real CLI and keep its stdout, so the page's terminal never lies."""
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    commands = [
+        ("单条", ["gen", "--task", "把红色方块放进盒子", "--out", "out", "--resolution", "96"]),
+        ("批量", ["gen", "--task", "把红色方块放进盒子", "--out", "out", "--resolution", "64",
+                 "--episodes", "6", "--seed", "1", "--workers", "4"]),
+        ("账本", ["index", "--out", "out"]),
+        ("预览", ["preview", "--episode", "out/episodes/franka-0000"]),
+    ]
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for label, args in commands:
+            proc = subprocess.run(
+                [sys.executable, "-m", "embodigen.cli", *args],
+                cwd=tmp, env=env, capture_output=True, text=True, check=False,
+            )
+            shown = " ".join(f'"{a}"' if " " in a or not a.isascii() else a for a in args)
+            out.append({"label": label, "cmd": f"embodigen {shown}", "output": proc.stdout.rstrip()})
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="docs/assets")
@@ -113,19 +199,19 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    print(f"[1/4] clean run @ {args.size}px")
+    print(f"[1/6] clean run @ {args.size}px")
     clean = run(args.size, fps=6, drift=0.0)
     white, w, h = sprite_sheet([f.rgb for f in clean.gt], args.size)
     write_png(out / "white-sheet.png", w, h, white)
     photo, pw, ph = sprite_sheet([f.rgb for f in clean.photoreal.frames], args.size)
     write_png(out / "photoreal-sheet.png", pw, ph, photo)
 
-    print(f"[2/4] drifted run @ {args.size}px (rejection path)")
+    print(f"[2/6] drifted run @ {args.size}px (rejection path)")
     drifted = run(args.size, fps=6, drift=25.0)
     # No drift sheet: the white model is the engine's ground truth and never
     # moves. Drift happens downstream, in the photorealizer.
 
-    print("[3/4] hero pair @ 320px")
+    print("[3/6] hero pair @ 320px")
     hero = run(320, fps=4, drift=0.0)
     grasp = min(range(len(hero.gt)), key=lambda i: abs(hero.gt[i].t - 1.9))
     write_png(out / "hero-white.png", 320, 320, hero.gt[grasp].rgb)
@@ -146,11 +232,20 @@ def main() -> int:
         channels=1,
     )
 
-    print("[4/4] metrics + morphology cards")
+    print("[4/6] batch grid @ 96px")
+    batch = batch_data(out)
+
+    print("[5/6] real CLI transcripts")
+    cli = cli_transcripts()
+
+    print("[6/6] metrics + morphology cards")
     payload = {
         "clean": metrics_of(clean, args.size, 6, 0.0),
         "drifted": metrics_of(drifted, args.size, 6, 25.0),
         "morphologies": morphology_frames(out),
+        "episode": episode_data(clean),
+        "batch": batch,
+        "cli": cli,
         "sheets": {
             "white": {"src": "assets/white-sheet.png", "cols": SHEET_COLS, "size": args.size, "frames": len(clean.gt)},
             "photoreal": {"src": "assets/photoreal-sheet.png", "cols": SHEET_COLS, "size": args.size, "frames": len(clean.photoreal.frames)},

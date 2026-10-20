@@ -28,9 +28,11 @@
     <span class="brand-text">EMBODIGEN</span>
   </a>
   <nav class="nav">
+    <a href="#live">实况</a>
     <a href="#pipeline">流程</a>
     <a href="#compare">对齐</a>
     <a href="#fidelity">认证</a>
+    <a href="#scale">批量</a>
     <a href="#run">运行</a>
     <a class="nav-gh" href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">GITHUB<span aria-hidden="true"> ↗</span></a>
   </nav>
@@ -41,17 +43,17 @@
   <!-- 00 · HERO -->
   <section class="hero">
     <div class="shell hero-inner">
-      <p class="eyebrow" data-reveal>EMBODIED DATA ENGINE <span class="sep">/</span> v0.1</p>
+      <p class="eyebrow" data-reveal><span class="live-dot" aria-hidden="true"></span>EMBODIED DATA ENGINE <span class="sep">/</span> v0.2</p>
       <h1 data-reveal>
         <span class="line">任务描述进</span>
-        <span class="line"><em>带标签的真实画面</em>出</span>
+        <span class="line"><em data-scramble>带标签的真实画面</em>出</span>
       </h1>
       <p class="lede" data-reveal>
         引擎持有世界状态，所以动作、位姿、分割都是精确真值；<br class="br-wide" />
         视频模型只管把白模画得像真的；验证器负责证明两者没有走样。
       </p>
       <div class="cta" data-reveal>
-        <a class="btn primary" href="#pipeline">看完整链路</a>
+        <a class="btn primary" href="#live">看实时回放 <span aria-hidden="true">→</span></a>
         <a class="btn ghost" href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">源码仓库 <span aria-hidden="true">↗</span></a>
       </div>
       <dl class="stats" data-reveal>
@@ -66,6 +68,76 @@
     </div>
   </section>
 
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>GROUND TRUTH</span><i>✦</i><span>DEPTH · f32</span><i>✦</i><span>INSTANCE SEG · u16</span><i>✦</i><span>PLÜCKER RAYS</span><i>✦</i><span>7-D ACTION</span><i>✦</i><span>PHASE LABELS</span><i>✦</i><span>FIDELITY GATE</span><i>✦</i><span>PROVENANCE</span><i>✦</i><span>LEROBOT-SHAPED</span><i>✦</i>
+      <span>GROUND TRUTH</span><i>✦</i><span>DEPTH · f32</span><i>✦</i><span>INSTANCE SEG · u16</span><i>✦</i><span>PLÜCKER RAYS</span><i>✦</i><span>7-D ACTION</span><i>✦</i><span>PHASE LABELS</span><i>✦</i><span>FIDELITY GATE</span><i>✦</i><span>PROVENANCE</span><i>✦</i><span>LEROBOT-SHAPED</span><i>✦</i>
+    </div>
+  </div>
+
+  <!-- LIVE · 3D episode replay -->
+  <section class="section live-section" id="live">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal><span class="live-dot" aria-hidden="true"></span>LIVE — ENGINE STATE REPLAY</p>
+        <h2 data-reveal>标签是引擎里的状态，<br />不是从画面里猜的。</h2>
+        <p class="section-lede" data-reveal>下面每一帧的位置、夹爪开度、动作向量和误差，都直接取自一条真实 episode。拖动画面换视角，拖动时间轴逐帧检查。</p>
+      </header>
+
+      <div class="live" data-reveal>
+        <div class="viewer spot" id="viewer">
+          <canvas id="scene3d" aria-label="episode 的三维回放：物体、夹爪轨迹与数据集相机"></canvas>
+          <div class="v-hud v-hud-tl">
+            <span class="hud-id" id="hud-id">franka-0000</span>
+            <span class="hud-task" id="hud-task">把红色方块放进盒子</span>
+          </div>
+          <div class="v-hud v-hud-tr switch" role="group" aria-label="渲染通道">
+            <button type="button" class="on" data-mode="material">材质</button>
+            <button type="button" data-mode="clay">白模</button>
+            <button type="button" data-mode="depth">深度</button>
+            <button type="button" data-mode="seg">分割</button>
+          </div>
+          <div class="v-hud v-hud-bl">
+            <span class="hud-phase" id="hud-phase">PRE_GRASP</span>
+          </div>
+          <p class="v-hint" aria-hidden="true">DRAG TO ORBIT</p>
+          <div class="timeline">
+            <button type="button" class="play" id="play" aria-label="暂停">❚❚</button>
+            <div class="track" id="track">
+              <div class="phases" id="phases"></div>
+              <div class="track-fill" id="track-fill"></div>
+              <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="时间轴" />
+            </div>
+            <span class="t-read" id="t-read">0.00 s</span>
+          </div>
+        </div>
+
+        <aside class="telemetry spot">
+          <div class="tel-block">
+            <p class="tel-label">RENDERED FRAME <span id="pip-mode">· PHOTOREAL</span></p>
+            <div class="pip" id="pip" role="img" aria-label="同一时刻管线真实渲染的帧"></div>
+          </div>
+          <div class="tel-block">
+            <p class="tel-label">EEF POSITION · m</p>
+            <p class="tel-xyz" id="tel-eef">0.000 0.000 0.000</p>
+          </div>
+          <div class="tel-block">
+            <p class="tel-label">GRIPPER <span class="tel-val" id="tel-grip">0.040 m</span></p>
+            <div class="meter"><span id="grip-fill"></span></div>
+          </div>
+          <div class="tel-block">
+            <p class="tel-label">ACTION · 7-D</p>
+            <div class="action-bars" id="action-bars"></div>
+          </div>
+          <div class="tel-block">
+            <p class="tel-label">REPROJECTION ERROR <span class="tel-val" id="tel-err">0.00 mm</span></p>
+            <div class="meter err"><span id="err-fill"></span><i id="err-thr"></i></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
   <!-- 01 · GAP -->
   <section class="section" id="gap">
     <div class="shell">
@@ -75,13 +147,13 @@
       </header>
 
       <div class="gap-grid">
-        <article class="gap-card" data-reveal>
+        <article class="gap-card spot" data-reveal>
           <span class="card-index">01</span>
           <h3>纯仿真</h3>
           <p class="card-tag">标签精确 · 画面是 CG</p>
           <p class="card-body">深度、分割、动作都是算出来的。但渲染太干净，策略迁到真机时，视觉差距直接吃掉精度。</p>
         </article>
-        <article class="gap-card" data-reveal>
+        <article class="gap-card spot" data-reveal>
           <span class="card-index">02</span>
           <h3>视频生成</h3>
           <p class="card-tag">画面真实 · 标签靠估计</p>
@@ -242,7 +314,7 @@
       </header>
 
       <div class="verdicts">
-        <article class="verdict is-bad" data-reveal>
+        <article class="verdict is-bad spot" data-reveal>
           <header class="v-head">
             <span class="v-name">DRIFTED RENDER</span>
             <span class="pill reject">REJECT</span>
@@ -253,7 +325,7 @@
           <p class="v-foot">夹爪和方块被一起挪了，动作标签失效——即使画面看起来很真。</p>
         </article>
 
-        <article class="verdict is-good" data-reveal>
+        <article class="verdict is-good spot" data-reveal>
           <header class="v-head">
             <span class="v-name">CERTIFIED RENDER</span>
             <span class="pill accept">PASS</span>
@@ -269,11 +341,27 @@
     </div>
   </section>
 
-  <!-- 06 · ARTIFACT -->
+  <!-- 06 · SCALE -->
+  <section class="section" id="scale">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>06 — SCALE</p>
+        <h2 data-reveal>一次一批，<br />每条都过闸。</h2>
+        <p class="section-lede" data-reveal><code>--episodes N</code> 在连续种子上并行生成，每条独立验证；结果汇总进 <code>index.json</code> 账本。下面是默认配置下的一次真实批量：每条的首次渲染都被注入漂移、被拦下、再加严条件重渲通过。</p>
+      </header>
+      <div class="batch-head" data-reveal>
+        <p class="batch-stat"><span id="batch-cert">12</span><small>/ <span id="batch-total">12</span></small></p>
+        <p class="batch-cap">certified · 首轮漂移全部拦截</p>
+      </div>
+      <div class="batch-grid" id="batch-grid" data-reveal></div>
+    </div>
+  </section>
+
+  <!-- 07 · ARTIFACT -->
   <section class="section" id="artifact">
     <div class="shell">
       <header class="section-head">
-        <p class="eyebrow" data-reveal>06 — ARTIFACT</p>
+        <p class="eyebrow" data-reveal>07 — ARTIFACT</p>
         <h2 data-reveal>一条样本，自包含。</h2>
       </header>
 
@@ -300,13 +388,14 @@
             <li>相机内外参</li>
             <li>实例分割</li>
             <li>忠实度元数据</li>
+            <li>阶段标签</li>
             <li>配置哈希</li>
           </ul>
           <dl class="prov">
             <div><dt>ENGINE</dt><dd>software-raycast-v0</dd></div>
             <div><dt>PHOTOREALIZER</dt><dd>mock-photoreal-v0</dd></div>
             <div><dt>VALIDATOR</dt><dd>keypoint-appearance-v0</dd></div>
-            <div><dt>FORMAT</dt><dd>LeRobot-shaped · v0.1</dd></div>
+            <div><dt>FORMAT</dt><dd>LeRobot-shaped · v0.2</dd></div>
           </dl>
           <p class="artifact-note">整个目录自包含：只凭它就能重算忠实度，不需要再跑一遍引擎。</p>
         </div>
@@ -314,11 +403,11 @@
     </div>
   </section>
 
-  <!-- 07 · MORPHOLOGY -->
+  <!-- 08 · MORPHOLOGY -->
   <section class="section" id="bodies">
     <div class="shell">
       <header class="section-head">
-        <p class="eyebrow" data-reveal>07 — MORPHOLOGY</p>
+        <p class="eyebrow" data-reveal>08 — MORPHOLOGY</p>
         <h2 data-reveal>换一个本体，<br />不改一条管线。</h2>
         <p class="section-lede" data-reveal>形态差异只落在两处配置：本体（URDF 与动作空间）和任务。其余模块对形态透明。</p>
       </header>
@@ -327,26 +416,27 @@
     </div>
   </section>
 
-  <!-- 08 · RUN -->
+  <!-- 09 · RUN -->
   <section class="section" id="run">
     <div class="shell">
       <header class="section-head">
-        <p class="eyebrow" data-reveal>08 — RUN</p>
+        <p class="eyebrow" data-reveal>09 — RUN</p>
         <h2 data-reveal>一条命令，<br />从一句话到一条样本。</h2>
       </header>
 
-      <div class="terminal" data-reveal>
+      <div class="terminal spot" data-reveal>
         <div class="term-bar">
           <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
           <em>zsh — embodigen</em>
+          <div class="term-tabs" id="term-tabs" role="tablist"></div>
           <button class="copy" id="copy" type="button">复制</button>
         </div>
         <pre><code id="cmd">pip install -e .
 embodigen gen --task "把红色方块放进盒子" --out out --resolution 96
-embodigen validate --episode out/episodes/franka-0000</code></pre>
+embodigen validate --episode out/episodes/franka-0000</code><code class="term-out" id="term-out"></code></pre>
       </div>
 
-      <p class="run-note" data-reveal>核心只用标准库：没有 numpy、没有 GPU 也能跑完整条链路；真实后端通过 extras 挂进来。</p>
+      <p class="run-note" data-reveal>终端里的输出是构建页面时真实跑出来的，不是手写的。核心只用标准库：没有 numpy、没有 GPU 也能跑完整条链路；真实后端通过 extras 挂进来。</p>
     </div>
   </section>
 
@@ -361,12 +451,14 @@ embodigen validate --episode out/episodes/franka-0000</code></pre>
     <div class="foot-right">
       <a href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/wellkilo/embodigen/blob/main/README.md" target="_blank" rel="noopener">README</a>
-      <span class="dim">REFERENCE IMPLEMENTATION · v0.1</span>
+      <a href="assets/showcase.mp4" target="_blank" rel="noopener">演示视频</a>
+      <span class="dim">REFERENCE IMPLEMENTATION · v0.2</span>
     </div>
   </div>
 </footer>
 
 <script src="assets/metrics.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/live.js"></script>
 </body>
 </html>

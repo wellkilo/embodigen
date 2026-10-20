@@ -135,6 +135,7 @@ class Frame:
     action: tuple[float, ...]
     joints: tuple[float, ...]
     objects: dict[str, Vec3]
+    phase: str = ""  # sub-task label from the planner, e.g. "grasp"
 
 
 @dataclass
@@ -168,6 +169,7 @@ class FrameGT:
     objects: dict[str, Vec3]
     action: tuple[float, ...]
     seg_labels: dict[str, int] = field(default_factory=dict)
+    phase: str = ""
 
 
 @dataclass
@@ -217,6 +219,7 @@ class Provenance:
     condition_weights: dict[str, float]
     attempts: int
     created_at: str
+    validator: str = ""
 
 
 @dataclass
@@ -241,5 +244,6 @@ class Episode:
             "observation.camera.intrinsics": {"dtype": "float32", "shape": [4]},
             "observation.camera.extrinsics": {"dtype": "float32", "shape": [4, 4]},
             "action": {"dtype": "float32", "shape": [self.trajectory.action_dim]},
+            "phase": {"dtype": "string", "shape": [1]},
             "episode_index": {"dtype": "int64", "shape": [1]},
         }

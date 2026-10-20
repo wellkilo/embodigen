@@ -71,6 +71,8 @@ function initField() {
       row += 1;
     }
 
+    drawFloor(t);
+
     // Fade the field out towards the edges so it reads as atmosphere.
     const cx = width / 2;
     const cy = height * 0.42;
@@ -82,6 +84,42 @@ function initField() {
     ctx.fillRect(0, 0, width, height);
 
     if (!REDUCED) requestAnimationFrame(draw);
+  }
+
+  // A receding ground grid under the hero: the engine's world, before any
+  // appearance is put on it. It fades out as the hero scrolls away.
+  function drawFloor(t) {
+    const fade = clamp(1 - window.scrollY / (height * 0.9), 0, 1);
+    if (fade <= 0) return;
+    const horizon = height * 0.6;
+    const vx = width * 0.5 + pointerX * 30;
+    ctx.lineWidth = 1;
+    for (let i = -14; i <= 14; i++) {
+      const xb = vx + i * width * 0.11;
+      ctx.strokeStyle = `rgba(47,123,255,${0.11 * fade * (1 - Math.abs(i) / 15)})`;
+      ctx.beginPath();
+      ctx.moveTo(vx + i * 6, horizon);
+      ctx.lineTo(xb, height);
+      ctx.stroke();
+    }
+    const phase = REDUCED ? 0 : (t * 0.12) % 1;
+    for (let k = 0; k < 12; k++) {
+      const s = (k + phase) / 12;
+      const y = horizon + (height - horizon) * s * s;
+      ctx.strokeStyle = `rgba(47,123,255,${0.13 * fade * s})`;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    // Scan line sweeping toward the viewer.
+    const scan = REDUCED ? 0.5 : (t * 0.18) % 1;
+    const sy = horizon + (height - horizon) * scan * scan;
+    const g = ctx.createLinearGradient(0, sy - 30, 0, sy + 2);
+    g.addColorStop(0, "rgba(47,123,255,0)");
+    g.addColorStop(1, `rgba(120,170,255,${0.22 * fade})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, sy - 30, width, 32);
   }
 
   window.addEventListener("resize", () => {
@@ -207,7 +245,7 @@ function initFilm() {
   const el = document.getElementById("film");
   const badge = document.getElementById("film-badge");
   const counter = document.getElementById("film-count");
-  const buttons = [...document.querySelectorAll(".switch button")];
+  const buttons = [...document.querySelectorAll("[data-sheet]")];
   if (!el || !METRICS) return;
 
   const sheets = METRICS.sheets;
@@ -350,9 +388,16 @@ function animateNumber(el) {
   requestAnimationFrame(step);
 }
 
-function renderBars(container, series) {
+function renderBars(container, series, threshold) {
   if (!container || !series) return;
   const max = 30; // mm, shared scale for both panels
+  if (threshold) {
+    const thr = document.createElement("div");
+    thr.className = "thr";
+    thr.style.bottom = `${(threshold / max) * 100}%`;
+    thr.innerHTML = `<span>${threshold} MM GATE</span>`;
+    container.appendChild(thr);
+  }
   series.forEach((value, i) => {
     const bar = document.createElement("span");
     bar.className = "bar";
@@ -365,8 +410,8 @@ function renderBars(container, series) {
 
 function initVerdicts() {
   if (!METRICS) return;
-  renderBars(document.getElementById("bars-bad"), METRICS.drifted?.per_frame_mm);
-  renderBars(document.getElementById("bars-good"), METRICS.clean?.per_frame_mm);
+  renderBars(document.getElementById("bars-bad"), METRICS.drifted?.per_frame_mm, METRICS.drifted?.threshold_mm);
+  renderBars(document.getElementById("bars-good"), METRICS.clean?.per_frame_mm, METRICS.clean?.threshold_mm);
 
   // Keep the hero and the verdict panels tied to the generated metrics so the
   // page can never quote a number the pipeline did not produce.
@@ -411,7 +456,7 @@ function initBodies() {
   grid.innerHTML = METRICS.morphologies
     .map(
       (m) => `
-      <article class="body-card" data-reveal>
+      <article class="body-card spot" data-reveal>
         <img src="${m.image}" alt="${m.name} 视角的渲染帧" />
         <div class="body-meta">
           <h3>${m.name}</h3>
@@ -437,7 +482,7 @@ function initCopy() {
   if (!btn || !cmd) return;
 
   btn.addEventListener("click", async () => {
-    const text = cmd.textContent;
+    const text = cmd.textContent.replace(/^\$ /, "");
     const original = btn.textContent;
     try {
       await navigator.clipboard.writeText(text);
@@ -454,6 +499,140 @@ function initCopy() {
   });
 }
 
+/* ------------------------------------------------------------------
+   10. Headline decode
+   The accent line resolves out of label vocabulary, left to right.
+   ------------------------------------------------------------------ */
+
+function initScramble() {
+  const el = document.querySelector("[data-scramble]");
+  if (!el || REDUCED || CAPTURE) return;
+  const final = el.textContent;
+  const pool = "真值深度分割位姿动作标签引擎渲染验证轨迹相机帧";
+  const start = performance.now() + 350;
+  const dur = 1300;
+  const step = (now) => {
+    const p = clamp((now - start) / dur, 0, 1);
+    const fixed = Math.floor(p * final.length);
+    let out = final.slice(0, fixed);
+    for (let i = fixed; i < final.length; i++) out += pool[(Math.random() * pool.length) | 0];
+    el.textContent = out;
+    if (p < 1) requestAnimationFrame(step);
+    else el.textContent = final;
+  };
+  requestAnimationFrame(step);
+}
+
+/* ------------------------------------------------------------------
+   11. Pointer spotlight on cards
+   ------------------------------------------------------------------ */
+
+function initSpotlight() {
+  if (REDUCED) return;
+  document.addEventListener(
+    "pointermove",
+    (e) => {
+      const card = e.target.closest?.(".spot");
+      if (!card) return;
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+      card.style.setProperty("--my", `${e.clientY - rect.top}px`);
+    },
+    { passive: true }
+  );
+}
+
+/* ------------------------------------------------------------------
+   12. Batch grid
+   ------------------------------------------------------------------ */
+
+function initBatch() {
+  const grid = document.getElementById("batch-grid");
+  const B = METRICS?.batch;
+  if (!grid || !B) return;
+  const rows = Math.ceil(B.episodes.length / B.cols);
+  document.getElementById("batch-cert").textContent = B.certified;
+  document.getElementById("batch-total").textContent = B.total;
+  grid.innerHTML = B.episodes
+    .map((ep, i) => {
+      const x = ((i % B.cols) / Math.max(1, B.cols - 1)) * 100;
+      const y = (Math.floor(i / B.cols) / Math.max(1, rows - 1)) * 100;
+      const retried = ep.attempts > 1 ? `${ep.attempts} attempts · 1st rejected` : "1st attempt";
+      return `
+      <figure class="tile spot">
+        <div class="tile-img" style="background-image:url('${B.src}');background-size:${B.cols * 100}% ${rows * 100}%;background-position:${x}% ${y}%"></div>
+        <span class="tile-pill ${ep.passed ? "" : "reject"}">${ep.passed ? "PASS" : "REJECT"}</span>
+        <figcaption class="tile-meta"><b>${ep.id}</b>p95 ${ep.p95_mm.toFixed(2)} mm<span class="att"><br />${retried}</span></figcaption>
+      </figure>`;
+    })
+    .join("");
+}
+
+/* ------------------------------------------------------------------
+   13. Terminal transcripts
+   Real stdout captured when the page assets were built.
+   ------------------------------------------------------------------ */
+
+function initTerminal() {
+  const tabs = document.getElementById("term-tabs");
+  const cmd = document.getElementById("cmd");
+  const out = document.getElementById("term-out");
+  const runs = METRICS?.cli;
+  if (!tabs || !cmd || !out || !runs?.length) return;
+
+  const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const paint = (line) =>
+    esc(line)
+      .replace(/\b(PASS|written)\b/g, '<span class="ok">$1</span>')
+      .replace(/\b(REJECT|FAIL|rejected)\b/g, '<span class="bad">$1</span>');
+
+  let token = 0;
+  function show(index, instant) {
+    const run = runs[index];
+    const mine = ++token;
+    [...tabs.children].forEach((b, i) => b.classList.toggle("on", i === index));
+    const lines = run.output.split("\n");
+    if (instant || REDUCED || CAPTURE) {
+      cmd.textContent = `$ ${run.cmd}`;
+      out.innerHTML = lines.map(paint).join("\n");
+      return;
+    }
+    out.innerHTML = "";
+    let i = 0;
+    const typeCmd = () => {
+      if (mine !== token) return;
+      i += 2;
+      cmd.innerHTML = esc(`$ ${run.cmd.slice(0, i)}`) + '<span class="caret"></span>';
+      if (i < run.cmd.length) window.setTimeout(typeCmd, 18);
+      else {
+        cmd.textContent = `$ ${run.cmd}`;
+        window.setTimeout(() => printLine(0), 260);
+      }
+    };
+    const printLine = (k) => {
+      if (mine !== token || k >= lines.length) return;
+      out.innerHTML += (k ? "\n" : "") + paint(lines[k]);
+      window.setTimeout(() => printLine(k + 1), 70);
+    };
+    typeCmd();
+  }
+
+  tabs.innerHTML = runs.map((r) => `<button type="button" role="tab">${r.label}</button>`).join("");
+  [...tabs.children].forEach((b, i) => b.addEventListener("click", () => show(i)));
+
+  show(0, true);
+  if (REDUCED || CAPTURE) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!entries[0].isIntersecting) return;
+      show(0);
+      io.disconnect();
+    },
+    { threshold: 0.4 }
+  );
+  io.observe(out);
+}
+
 /* ------------------------------------------------------------------ */
 
 initField();
@@ -465,6 +644,10 @@ initFilm();
 initSlider();
 initVerdicts();
 initCopy();
+initScramble();
+initSpotlight();
+initBatch();
+initTerminal();
 
 if (CAPTURE && location.hash) {
   const target = document.querySelector(location.hash);

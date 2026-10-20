@@ -6,15 +6,20 @@ up ad hoc:
 * every retry is recorded, so an episode can be audited (which seed, which
   condition weights, how many attempts);
 * a failed validation never silently reaches the dataset -- it either retries
-  with stronger geometry conditioning or the episode is reported as failed.
+  with stronger geometry conditioning or the episode is reported as failed
+  and packed under ``rejected/`` (kept for auditing, never under
+  ``episodes/``).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
-from dataclasses import dataclass, field
+import shutil
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -140,9 +145,100 @@ class Pipeline:
                 condition_weights=weights,
                 attempts=attempts,
                 created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                validator=self.validator.name,
             ),
         )
 
         if cfg.pack:
-            episode.root = self.packer.pack(episode, Path(cfg.out_dir) / "episodes")  # type: ignore[attr-defined]
+            # Only certified episodes enter the dataset. Rejected ones are kept
+            # next to it so a failure can still be inspected and audited.
+            bucket, other = ("episodes", "rejected") if report.passed else ("rejected", "episodes")
+            stale = Path(cfg.out_dir) / other / episode.episode_id
+            if stale.is_dir():
+                shutil.rmtree(stale)
+            episode.root = self.packer.pack(episode, Path(cfg.out_dir) / bucket)  # type: ignore[attr-defined]
         return episode
+
+    def run_batch(
+        self,
+        instruction: str,
+        robot_name: str = "franka",
+        count: int = 1,
+        workers: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Generate ``count`` episodes on consecutive seeds.
+
+        Workers return summaries rather than episodes: frames stay on disk,
+        so a batch costs the same memory as a single episode.
+        """
+        seeds = [self.config.seed + i for i in range(count)]
+        jobs = [(self.config, instruction, robot_name, s) for s in seeds]
+        if workers <= 1 or count <= 1:
+            rows = [_run_one(*job) for job in jobs]
+        else:
+            with ProcessPoolExecutor(max_workers=min(workers, count)) as pool:
+                rows = list(pool.map(_run_one, *zip(*jobs)))
+        if self.config.pack:
+            write_index(Path(self.config.out_dir), rows, instruction, robot_name, self.config)
+        return rows
+
+
+def summarize(episode: Episode) -> dict[str, Any]:
+    rep = episode.fidelity
+    root = getattr(episode, "root", None)
+    return {
+        "episode_id": episode.episode_id,
+        "seed": episode.task.seed,
+        "passed": rep.passed,
+        "p95_error_mm": round(rep.p95_error_mm, 4),
+        "max_error_mm": round(rep.max_error_mm, 4),
+        "attempts": episode.provenance.attempts,
+        "frames": len(episode.gt),
+        "path": str(root) if root is not None else None,
+    }
+
+
+def _run_one(config: PipelineConfig, instruction: str, robot_name: str, seed: int) -> dict[str, Any]:
+    # Top-level so it pickles into a worker process.
+    return summarize(Pipeline(config).run(instruction, robot_name=robot_name, seed=seed))
+
+
+def write_index(
+    out_dir: Path,
+    rows: list[dict[str, Any]],
+    instruction: str,
+    robot_name: str,
+    config: PipelineConfig,
+) -> Path:
+    """Merge a batch into ``<out>/index.json`` -- the dataset-level ledger."""
+    path = out_dir / "index.json"
+    index: dict[str, Any] = {"episodes": []}
+    if path.exists():
+        try:
+            index = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    by_id = {row["episode_id"]: row for row in index.get("episodes", [])}
+    for row in rows:
+        by_id[row["episode_id"]] = {**row, "instruction": instruction, "robot": robot_name}
+    episodes = sorted(by_id.values(), key=lambda r: r["episode_id"])
+    certified = sum(1 for r in episodes if r["passed"])
+    index = {
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "config_hash": config.fingerprint(),
+        "threshold_mm": config.threshold_mm,
+        "summary": {
+            "total": len(episodes),
+            "certified": certified,
+            "rejected": len(episodes) - certified,
+            "yield": round(certified / len(episodes), 4) if episodes else 0.0,
+        },
+        "episodes": episodes,
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def default_workers() -> int:
+    return max(1, (os.cpu_count() or 2) - 1)

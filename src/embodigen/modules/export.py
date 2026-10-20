@@ -108,6 +108,7 @@ class SoftwareGTExporter:
                     objects=dict(frame.objects),
                     action=frame.action,
                     seg_labels=labels,
+                    phase=frame.phase,
                 )
             )
         return frames
