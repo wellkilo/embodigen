@@ -2,6 +2,8 @@
   <a href="https://wellkilo.github.io/embodigen/">
     <img src="docs/assets/showcase.gif" width="860" alt="EmbodiGen 展示页：三维实况回放、通道切换、验证闸门与批量生成" />
   </a>
+  <br />
+  <sub>▶ <a href="https://wellkilo.github.io/embodigen/assets/showcase.mp4">观看 68 秒完整演示视频（MP4）</a> · 页面上的每个数字和每一帧都来自管线的真实运行</sub>
 </p>
 
 <h1 align="center">EmbodiGen</h1>
@@ -22,78 +24,13 @@
 
 <p align="center">
   <a href="https://wellkilo.github.io/embodigen/"><b>在线展示</b></a> ·
-  <a href="https://wellkilo.github.io/embodigen/assets/showcase.mp4"><b>演示视频</b></a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#它是什么">原理</a> ·
   <a href="#输出长什么样">数据格式</a> ·
   <a href="#替换后端">替换后端</a>
 </p>
 
 ---
-
-## 演示视频
-
-<p align="center">
-  <a href="https://wellkilo.github.io/embodigen/assets/showcase.mp4">
-    <img src="docs/assets/showcase-poster.jpg" width="760" alt="点击播放 68 秒演示视频" />
-  </a>
-  <br />
-  <sub>▶ 点击播放完整 68 秒导览（1280×720 MP4）。页面上的每个数字、每一帧都来自管线真实运行，构建脚本见 <code>scripts/build_docs_assets.py</code>。</sub>
-</p>
-
-## 它是什么
-
-机器人策略训练缺的不是视频，是**带准确动作标签**的视频。纯仿真的标签准，但画面是 CG；生成模型的画面真，但动作只能靠估计。
-
-EmbodiGen 把这两件事拆开：
-
-| | |
-|---|---|
-| **输入** | 一句任务，例如「把红色方块放进盒子」；外加机器人本体配置（URDF + 动作空间） |
-| **输出** | 自包含的 episode 目录：照片级帧 + 动作序列 + 阶段标签 + 精确的深度 / 分割 / 位姿 + 忠实度报告 |
-| **保证** | 标签由引擎从几何算出，不是从视频里估的；渲染器只改外观；验证器证明几何没有被带偏，**不达标的样本进不了数据集** |
-
-```mermaid
-flowchart LR
-    T["任务描述"] --> S["SceneGenerator<br/>场景 + 成功判据"]
-    S --> J["TrajectoryGen<br/>轨迹 + 阶段"]
-    J --> G["GTExporter<br/>白模 / 深度 / 分割 / 位姿"]
-    G --> P["Photorealizer<br/>只改外观"]
-    P --> V{"FidelityValidator<br/>p95 ≤ 阈值？"}
-    V -- "通过" --> D["DatasetPacker<br/>out/episodes/"]
-    V -- "未通过 · 加严几何条件重渲" --> P
-    V -- "重试用尽" --> R["out/rejected/<br/>留档审计"]
-```
-
-六个阶段都在 `src/embodigen/modules/` 下，各自一个接口。当前的场景、引擎和渲染器是参考实现；换成 ManiSkill3 或 Wan 只需实现对应方法并注册。产物按 LeRobot 的形状组织，可以直接接进 OpenVLA、π0、Diffusion Policy 这类训练流程：视频帧喂视觉塔，`action` 喂动作头，`phase` 做子任务监督，`fidelity` 用来筛选或加权样本。
-
-## 亮点
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/assets/screens/live.jpg" alt="三维实况回放" /><br />
-      <b>标签是引擎状态</b><br />
-      <sub>位置、夹爪、7 维动作和逐帧误差都直接取自 episode。展示页可以拖动视角、逐帧检查、切换材质 / 白模 / 深度 / 分割。</sub>
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/assets/screens/fidelity.jpg" alt="验证闸门" /><br />
-      <b>不达标，就不入库</b><br />
-      <sub>验证器只读渲染像素和相机内参，把夹爪找回来与真值比重投影误差。注入 25 mm 漂移会被拦下，加严条件后重渲通过。</sub>
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <img src="docs/assets/screens/scale.jpg" alt="批量生成" /><br />
-      <b>一次一批，每条都过闸</b><br />
-      <sub><code>--episodes N --workers K</code> 在连续种子上并行生成，结果汇总进 <code>index.json</code> 账本。</sub>
-    </td>
-    <td valign="top">
-      <img src="docs/assets/preview.gif" alt="白模 / 照片级 / 深度 / 分割 四通道预览" /><br />
-      <b>一眼看完一条样本</b><br />
-      <sub><code>embodigen preview</code> 把白模、照片级、深度、分割并排写成 GIF，只读 episode 目录，也顺带检查产物是否完整。</sub>
-    </td>
-  </tr>
-</table>
 
 ## 快速开始
 
@@ -134,7 +71,30 @@ written      out/episodes/franka-0000
 
 </details>
 
+## 它是什么
+
+机器人策略训练缺的不是视频，是**带准确动作标签**的视频。纯仿真的标签准，但画面是 CG；生成模型的画面真，但动作只能靠估计。
+
+EmbodiGen 把这两件事拆开：
+
+| | |
+|---|---|
+| **输入** | 一句任务，例如「把红色方块放进盒子」；外加机器人本体配置（URDF + 动作空间） |
+| **输出** | 自包含的 episode 目录：照片级帧 + 动作序列 + 阶段标签 + 精确的深度 / 分割 / 位姿 + 忠实度报告 |
+| **保证** | 标签由引擎从几何算出，不是从视频里估的；渲染器只改外观；验证器证明几何没有被带偏，**不达标的样本进不了数据集** |
+
+<p align="center">
+  <img src="docs/assets/pipeline.svg" width="860" alt="流程：任务描述 → 场景 → 轨迹 → 真值导出 → 照片级化 → 验证；通过入库，未通过加严条件重渲，重试用尽进入 rejected/" />
+</p>
+
+六个阶段都在 `src/embodigen/modules/` 下，各自一个接口。当前的场景、引擎和渲染器是参考实现；换成 ManiSkill3 或 Wan 只需实现对应方法并注册。产物按 LeRobot 的形状组织，可以直接接进 OpenVLA、π0、Diffusion Policy 这类训练流程：视频帧喂视觉塔，`action` 喂动作头，`phase` 做子任务监督，`fidelity` 用来筛选或加权样本。
+
 ## 输出长什么样
+
+<p align="center">
+  <img src="docs/assets/preview.gif" width="640" alt="白模 / 照片级 / 深度 / 分割 四通道预览" /><br />
+  <sub>同一条 episode 的四个通道：白模 · 照片级 · 深度 · 实例分割（<code>embodigen preview</code> 的真实输出）</sub>
+</p>
 
 ```
 out/
@@ -218,6 +178,10 @@ depth = root / row["frames"]["depth"]        # float32 深度，96×96
 
 ## 验证器在测什么
 
+<p align="center">
+  <img src="docs/assets/screens/fidelity.jpg" width="760" alt="漂移渲染被拒绝，加严条件后的渲染通过" />
+</p>
+
 它只读渲染出来的像素和相机内参：把夹爪从画面里找回来，与引擎真值投到同一相机上比重投影误差，换算成毫米。
 
 | 条件（96 px） | p95 | 判定 |
@@ -226,6 +190,21 @@ depth = root / row["frames"]["depth"]        # float32 深度，96×96
 | 注入 25 mm 几何漂移，不重试 | 28.10 mm | 拒绝 → `out/rejected/` |
 
 重试不是再渲一次碰运气：每一轮都加严几何、深度、分割的条件权重，种子与权重写进 `meta/provenance.json`，事后可审计。
+
+## 批量与账本
+
+<p align="center">
+  <img src="docs/assets/screens/scale.jpg" width="760" alt="一次 12 条的真实批量，每条都通过验证" />
+</p>
+
+`--episodes N` 在种子 `seed … seed+N-1` 上生成 N 条，`--workers K` 用多进程并行；每条独立验证，认证通过的进 `out/episodes/`，没通过的进 `out/rejected/`。所有结果合并进 `out/index.json`：
+
+```bash
+embodigen gen --task "把红色方块放进盒子" --out out --resolution 64 --episodes 8 --workers 4
+embodigen index --out out      # 打印每条的 p95、重试次数、判定，以及良率
+```
+
+多次运行会按 episode id 合并进同一本账，不会互相覆盖。
 
 ## 命令一览
 
