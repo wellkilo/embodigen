@@ -24,3 +24,6 @@ jobs:
         run: |
           embodigen gen --task "把红色方块放进盒子" --out out --resolution 48
           embodigen validate --episode out/episodes/franka-0000
+          embodigen gen --task "put the blue cube in the bin" --out out --resolution 32 --episodes 3 --seed 10
+          embodigen index --out out
+          embodigen preview --episode out/episodes/franka-0000 --max-frames 6

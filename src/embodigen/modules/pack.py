@@ -12,6 +12,7 @@ installed the rows are additionally written as parquet.
 from __future__ import annotations
 
 import json
+import shutil
 import struct
 from dataclasses import asdict
 from pathlib import Path
@@ -23,6 +24,7 @@ from embodigen.types import (
     Episode,
     FrameGT,
     ObjectSpec,
+    PhotorealFrame,
     PhotorealResult,
     SceneSpec,
 )
@@ -47,6 +49,9 @@ class LeRobotPacker:
 
     def pack(self, episode: Episode, out_dir: Path) -> Path:
         root = Path(out_dir) / episode.episode_id
+        if root.is_dir():
+            # A re-run may produce fewer frames; never leave orphans behind.
+            shutil.rmtree(root)
         for sub in ("meta", "data/chunk-000", "frames/photoreal", "frames/white", "frames/depth", "frames/seg"):
             (root / sub).mkdir(parents=True, exist_ok=True)
 
@@ -113,7 +118,7 @@ class LeRobotPacker:
             root / "meta/fidelity.json",
             {
                 **episode.fidelity.to_dict(),
-                "validator": "keypoint-chromaticity-v0",
+                "validator": episode.provenance.validator or "unknown",
                 "note": "errors measured in 3D from rendered pixels only",
             },
         )
@@ -150,7 +155,11 @@ class LeRobotPacker:
 def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealResult]:
     """Read a packed episode back into the pipeline types (for `embodigen validate`)."""
     root = Path(root)
+    if not (root / "meta/scene.json").exists():
+        raise SystemExit(f"{root} is not a packed episode (missing meta/scene.json)")
     scene_meta = json.loads((root / "meta/scene.json").read_text(encoding="utf-8"))
+    info_path = root / "meta/info.json"
+    info = json.loads(info_path.read_text(encoding="utf-8")) if info_path.exists() else {}
     cam = Camera(**{k: tuple(v) if isinstance(v, list) else v for k, v in scene_meta["camera"].items()})
     objects = [
         ObjectSpec(
@@ -169,8 +178,8 @@ def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealR
         scene_id=root.name,
         instruction=scene_meta["instruction"],
         template=scene_meta["template"],
-        morphology="arm",
-        robot="franka",
+        morphology=info.get("morphology", "arm"),
+        robot=info.get("robot_type", "franka"),
         camera=cam,
         objects=objects,
         success=scene_meta.get("success", {}),
@@ -185,7 +194,7 @@ def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealR
     ]
     w, h = cam.width, cam.height
     gt: list[FrameGT] = []
-    pframes = []
+    pframes: list[PhotorealFrame] = []
     for row in rows:
         i = row["frame_index"]
         depth = list(struct.unpack(f"<{w*h}f", (root / f"frames/depth/{i:03d}.f32").read_bytes()))
@@ -207,14 +216,10 @@ def read_episode(root: str | Path) -> tuple[SceneSpec, list[FrameGT], PhotorealR
             )
         )
         pframes.append(
-            type(
-                "_PF",
-                (),
-                {
-                    "t": row["timestamp"],
-                    "rgb": (root / f"frames/photoreal/{i:03d}.rgb").read_bytes(),
-                    "drift_px": row.get("fidelity", {}).get("drift_px", 0.0),
-                },
-            )()
+            PhotorealFrame(
+                t=row["timestamp"],
+                rgb=(root / f"frames/photoreal/{i:03d}.rgb").read_bytes(),
+                drift_px=row.get("fidelity", {}).get("drift_px", 0.0),
+            )
         )
-    return scene, gt, PhotorealResult(model="from-disk", seed=0, frames=pframes)  # type: ignore[arg-type]
+    return scene, gt, PhotorealResult(model="from-disk", seed=0, frames=pframes)

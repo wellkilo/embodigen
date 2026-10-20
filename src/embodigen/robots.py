@@ -41,8 +41,11 @@ DEFAULT_ROBOTS: dict[str, dict[str, Any]] = {
 }
 
 
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs" / "robots"
+
+
 def load_robot(name: str, config_dir: Path | None = None) -> dict[str, Any]:
-    config_dir = config_dir or Path(__file__).resolve().parents[2] / "configs" / "robots"
+    config_dir = config_dir or CONFIG_DIR
     path = config_dir / f"{name}.toml"
     if path.exists():
         with path.open("rb") as fh:
@@ -53,8 +56,13 @@ def load_robot(name: str, config_dir: Path | None = None) -> dict[str, Any]:
         return robot
     if name in DEFAULT_ROBOTS:
         return dict(DEFAULT_ROBOTS[name])
-    raise SystemExit(f"unknown robot {name!r}; known: {', '.join(sorted(DEFAULT_ROBOTS))}")
+    raise SystemExit(f"unknown robot {name!r}; known: {', '.join(available_robots(config_dir))}")
 
 
-def available_robots() -> list[str]:
-    return sorted(DEFAULT_ROBOTS)
+def available_robots(config_dir: Path | None = None) -> list[str]:
+    """Built-in bodies plus any ``<name>.toml`` dropped into the config dir."""
+    config_dir = config_dir or CONFIG_DIR
+    names = set(DEFAULT_ROBOTS)
+    if config_dir.is_dir():
+        names.update(p.stem for p in config_dir.glob("*.toml"))
+    return sorted(names)

@@ -217,6 +217,7 @@ class Provenance:
     condition_weights: dict[str, float]
     attempts: int
     created_at: str
+    validator: str = ""
 
 
 @dataclass
