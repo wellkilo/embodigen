@@ -1,0 +1,147 @@
+# Open-P2P titles seen in elefantai/p2p-toy-examples plus the Roblox
+# experiences named in open-p2p's environment_mapping.py. Titles not listed
+# here still ingest under a slug label (env name, or roblox-<subtype>).
+# Roblox experiences share a franchise so OOD splits never pair two of them.
+
+[[world]]
+label = "call-of-duty-mobile"
+title = "Call of Duty: Mobile"
+category = "STG"
+view = "3D"
+aliases = ["call-of-duty-mobile", "CODM"]
+franchise = "call-of-duty"
+
+[[world]]
+label = "grand-theft-auto-san-andreas"
+title = "Grand Theft Auto: San Andreas"
+category = "AVG"
+view = "3D"
+aliases = ["grand-theft-auto-san-andreas", "GTA San Andreas"]
+franchise = "grand-theft-auto"
+
+[[world]]
+label = "quake"
+title = "Quake"
+category = "STG"
+view = "3D"
+franchise = "quake"
+
+[[world]]
+label = "roblox-a-dusty-trip"
+title = "Roblox A Dusty Trip"
+category = "OTH"
+view = "3D"
+aliases = ["roblox a-dusty-trip"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-be-a-snake"
+title = "Roblox Be A Snake"
+category = "OTH"
+view = "3D"
+aliases = ["roblox be-a-snake"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-be-a-shark"
+title = "Roblox Be A Shark"
+category = "OTH"
+view = "3D"
+aliases = ["roblox be-a-shark"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-be-a-alligator"
+title = "Roblox Be A Alligator"
+category = "OTH"
+view = "3D"
+aliases = ["roblox be-a-alligator"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-bear-simulator"
+title = "Roblox Bear Simulator"
+category = "OTH"
+view = "3D"
+aliases = ["roblox bear-simulator"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-blade-ball"
+title = "Roblox Blade Ball"
+category = "OTH"
+view = "3D"
+aliases = ["roblox blade-ball"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-death-ball"
+title = "Roblox Death Ball"
+category = "OTH"
+view = "3D"
+aliases = ["roblox death-ball"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-snake-simulator"
+title = "Roblox Snake Simulator"
+category = "OTH"
+view = "3D"
+aliases = ["roblox snake-simulator"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-the-floor-is-lava"
+title = "Roblox The Floor Is Lava"
+category = "OTH"
+view = "3D"
+aliases = ["roblox the-floor-is-lava"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-tower-of-hell"
+title = "Roblox Tower Of Hell"
+category = "OTH"
+view = "3D"
+aliases = ["roblox tower-of-hell"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-nature-disaster-survival"
+title = "Roblox Nature Disaster Survival"
+category = "OTH"
+view = "3D"
+aliases = ["roblox nature-disaster-survival"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-jujutsu-shenanigans"
+title = "Roblox Jujutsu Shenanigans"
+category = "OTH"
+view = "3D"
+aliases = ["roblox jujutsu-shenanigans"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-be-a-t-rex"
+title = "Roblox Be A T Rex"
+category = "OTH"
+view = "3D"
+aliases = ["roblox be-a-t-rex"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-be-a-dragon"
+title = "Roblox Be A Dragon"
+category = "OTH"
+view = "3D"
+aliases = ["roblox be-a-dragon"]
+franchise = "roblox"
+
+[[world]]
+label = "roblox-rally-racing"
+title = "Roblox Roblox Rally Racing"
+category = "OTH"
+view = "3D"
+aliases = ["roblox roblox-rally-racing"]
+franchise = "roblox"

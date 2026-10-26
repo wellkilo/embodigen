@@ -27,3 +27,46 @@ jobs:
           embodigen gen --task "put the blue cube in the bin" --out out --resolution 32 --episodes 3 --seed 10
           embodigen index --out out
           embodigen preview --episode out/episodes/franka-0000 --max-frames 6
+      - name: smoke test the virtual-world track
+        run: |
+          embodigen worlds
+          embodigen rollout --world raycast-arena --episodes 4 --seconds 20 --resolution 64x40 --out data/raw
+          embodigen rollout --world all --episodes 2 --seconds 20 --seed 100 --resolution 64x40 --out data/raw
+          embodigen rollout --world raycast-lava --episodes 1 --seed 70 --lag-ms 300 --resolution 64x40 --out data/raw
+          embodigen curate --raw data/raw --out data/curated
+          embodigen build --curated data/curated --study configs/studies/reference.toml --out data/mixes
+          embodigen ledger data/mixes/reference
+          embodigen preview --recording data/raw/raycast-arena-0000 --max-frames 6
+
+  public-formats:
+    # D2E's zstd MCAP chunks read with the 3.14 standard library; the
+    # synthetic fixtures cover both the stdlib and the [d2e] extra paths.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - python-version: "3.14"
+            extras: ""
+          - python-version: "3.11"
+            extras: "[d2e]"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: install
+        run: pip install -e ".${{ matrix.extras }}"
+      - name: D2E / Open-P2P / VPT adapters
+        run: python -m unittest tests.test_gameplay_d2e_p2p tests.test_gameplay_sources -v
+
+  vizdoom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install with the [env] extra
+        run: pip install -e '.[env]'
+      - name: ViZDoom rollout through the gate
+        run: python -m unittest tests.test_gameplay_vizdoom -v

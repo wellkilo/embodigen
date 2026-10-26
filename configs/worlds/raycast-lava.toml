@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (arena layout, lava palette, objective: gather).
+label = "raycast-lava"
+title = "Raycast Lava Fields"
+category = "SIM"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "arena"
+theme = "lava"
+objective = "gather"

@@ -1,0 +1,52 @@
+# The GameScaling grid (arXiv 2610.28698): 5 mixtures x 6 budgets, trained
+# at four model sizes for 120 runs. Numbers marked "paper" are taken from
+# the paper; "unpublished" values are placeholders to set before a real build.
+name = "gamescaling"
+anchor = "minecraft"                                  # paper
+budgets_hours = [50, 100, 200, 400, 800, 1600]        # paper
+vl_anchor_share = 0.15                                # paper: 15% of tokens
+seed = 3407                                           # paper
+
+# paper, Table 5: 28 titles from the Gaming500 pool (21 3D, 3 2.5D, 4 2D).
+# Register each under configs/worlds/ and list its label here.
+ood = []
+
+[windows]
+turns = 20                # paper
+stride = 10               # paper
+idle_turn_frac = 0.5      # unpublished
+idle_keep = 0.2           # unpublished: the paper downsamples idle-dominated windows
+stream_cap_hours = 40.0   # unpublished: the paper caps each source stream
+budget_unit = "footage"   # assumption: budgets are hours of gameplay footage, not summed windows
+
+[val]
+clips_per_world = 160     # paper
+in_corpus_worlds = 30     # paper: 30 pool games + a size-matched Minecraft subset
+min_title_pass_rate = 0.6 # paper
+
+[reasoning]
+rate = 0.057              # paper: 5.4-6.0% of assistant turns
+annotator = "mock"        # the paper used an LLM; register a model-backed annotator for real runs
+
+[serialize]
+shard_size = 4096
+
+[[mixtures]]
+name = "S1"
+anchor_share = 1.0        # paper
+
+[[mixtures]]
+name = "S2"
+anchor_share = 0.514      # paper
+
+[[mixtures]]
+name = "S3"
+anchor_share = 0.271      # paper
+
+[[mixtures]]
+name = "S4"
+anchor_share = 0.028      # paper
+
+[[mixtures]]
+name = "S5"
+anchor_share = 0.0        # paper: Minecraft removed

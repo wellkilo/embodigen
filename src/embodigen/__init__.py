@@ -1,8 +1,12 @@
-"""EmbodiGen: task description in, label-exact photorealistic dataset out.
+"""EmbodiGen: label-exact training data for embodied agents.
 
-The package is organised around one contract (``types``) and six replaceable
-stages (``modules``). Anything that satisfies the stage protocols can be
-swapped in without touching the other stages.
+Two tracks share one way of working -- a plain-dataclass contract, stages
+that satisfy protocols by shape, a gate that keeps bad samples out, and a
+ledger that says why:
+
+* robot track: ``types`` + six replaceable stages in ``modules``;
+* virtual-world track: ``gameplay`` -- games as simulation environments,
+  keyboard-mouse data packaged for GameScaling-style scaling studies.
 """
 
 from embodigen.types import (
@@ -35,4 +39,4 @@ __all__ = [
     "Trajectory",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

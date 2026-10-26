@@ -1,4 +1,4 @@
-"""Minimal PNG writer (8-bit RGB / RGBA / grayscale) on top of zlib.
+"""Minimal PNG writer and reader (8-bit RGB / RGBA / grayscale) on top of zlib.
 
 Exists so the demo produces inspectable images without pulling Pillow in.
 The real packer uses ffmpeg/pyarrow through the ``[lerobot]`` extra.
@@ -39,3 +39,63 @@ def write_png(path: str | Path, width: int, height: int, pixels: bytes, channels
         + _chunk(b"IEND", b"")
     )
     Path(path).write_bytes(blob)
+
+
+def _paeth(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    return b if pb <= pc else c
+
+
+def read_png(path: str | Path) -> tuple[int, int, int, bytes]:
+    """Read an 8-bit, non-interlaced grayscale/RGB/RGBA PNG -> (w, h, channels, pixels).
+
+    Enough for frames this project writes and for ordinary engine captures;
+    palette and 16-bit images are out of scope.
+    """
+    blob = Path(path).read_bytes()
+    if blob[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError(f"{path} is not a PNG")
+    pos, idat = 8, bytearray()
+    width = height = channels = 0
+    while pos < len(blob):
+        (length,) = struct.unpack(">I", blob[pos : pos + 4])
+        tag = blob[pos + 4 : pos + 8]
+        data = blob[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if tag == b"IHDR":
+            width, height, depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", data)
+            if depth != 8 or interlace or color_type not in (0, 2, 6):
+                raise ValueError(f"{path}: unsupported PNG (depth {depth}, type {color_type})")
+            channels = {0: 1, 2: 3, 6: 4}[color_type]
+        elif tag == b"IDAT":
+            idat.extend(data)
+        elif tag == b"IEND":
+            break
+    raw = zlib.decompress(bytes(idat))
+    stride = width * channels
+    out = bytearray(height * stride)
+    prev = bytearray(stride)
+    for y in range(height):
+        f = raw[y * (stride + 1)]
+        line = bytearray(raw[y * (stride + 1) + 1 : (y + 1) * (stride + 1)])
+        if f == 1:
+            for i in range(channels, stride):
+                line[i] = (line[i] + line[i - channels]) & 0xFF
+        elif f == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 0xFF
+        elif f == 3:
+            for i in range(stride):
+                left = line[i - channels] if i >= channels else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 0xFF
+        elif f == 4:
+            for i in range(stride):
+                left = line[i - channels] if i >= channels else 0
+                up_left = prev[i - channels] if i >= channels else 0
+                line[i] = (line[i] + _paeth(left, prev[i], up_left)) & 0xFF
+        out[y * stride : (y + 1) * stride] = line
+        prev = line
+    return width, height, channels, bytes(out)

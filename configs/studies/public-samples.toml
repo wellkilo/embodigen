@@ -1,0 +1,49 @@
+# A miniature grid on real public recordings (scripts/fetch_public_samples.py):
+# 3 VPT + 1 D2E Minecraft recordings as the anchor, D2E and Open-P2P titles as
+# the rest of the pool. About 1.2 h of footage, so budgets are minutes.
+name = "public-samples"
+anchor = "minecraft"
+ood = ["call-of-duty-mobile"]     # P2P title; no Call of Duty in the pool
+budgets_hours = [0.05, 0.1, 0.2]
+vl_anchor_share = 0.15
+seed = 3407
+
+[windows]
+turns = 20
+stride = 10
+idle_turn_frac = 0.5
+idle_keep = 0.2
+stream_cap_hours = 0.5
+budget_unit = "footage"
+
+[val]
+clips_per_world = 8
+in_corpus_worlds = 30
+min_title_pass_rate = 0.6
+
+[reasoning]
+rate = 0.057
+annotator = "mock"
+
+[serialize]
+shard_size = 64
+
+[[mixtures]]
+name = "S1"
+anchor_share = 1.0
+
+[[mixtures]]
+name = "S2"
+anchor_share = 0.514
+
+[[mixtures]]
+name = "S3"
+anchor_share = 0.271
+
+[[mixtures]]
+name = "S4"
+anchor_share = 0.028
+
+[[mixtures]]
+name = "S5"
+anchor_share = 0.0

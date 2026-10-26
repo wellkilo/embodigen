@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (maze layout, tech palette, objective: gather).
+label = "raycast-maze"
+title = "Raycast Maze"
+category = "AVG"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "maze"
+theme = "tech"
+objective = "gather"

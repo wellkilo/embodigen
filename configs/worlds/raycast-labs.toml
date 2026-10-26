@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (rooms layout, tech palette, objective: exit).
+label = "raycast-labs"
+title = "Raycast Labs"
+category = "AVG"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "rooms"
+theme = "tech"
+objective = "exit"
