@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (rooms layout, forest palette, objective: hunt).
+label = "raycast-rooms"
+title = "Raycast Rooms"
+category = "STG"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "rooms"
+theme = "forest"
+objective = "hunt"

@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (maze layout, forest palette, objective: hunt).
+label = "raycast-grove"
+title = "Raycast Grove"
+category = "RPG"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "maze"
+theme = "forest"
+objective = "hunt"

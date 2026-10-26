@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (arena layout, stone palette, objective: hunt).
+label = "raycast-arena"
+title = "Raycast Arena"
+category = "STG"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "arena"
+theme = "stone"
+objective = "hunt"

@@ -1,4 +1,4 @@
-.PHONY: install test demo batch preview docs clean
+.PHONY: install test demo batch preview docs worlds samples clean
 
 install:
 	pip install -e .
@@ -17,9 +17,29 @@ batch:
 preview:
 	PYTHONPATH=src python3 -m embodigen.cli preview --episode out/episodes/franka-0000
 
+# Virtual-world track on the stdlib reference worlds: rollout -> curate -> build.
+worlds:
+	PYTHONPATH=src python3 -m embodigen.cli rollout --world raycast-arena --episodes 8 --seconds 30 --out data/raw
+	PYTHONPATH=src python3 -m embodigen.cli rollout --world all --episodes 3 --seconds 30 --seed 100 --out data/raw
+	PYTHONPATH=src python3 -m embodigen.cli rollout --world raycast-rooms --episodes 1 --seed 50 --profile afk --out data/raw
+	PYTHONPATH=src python3 -m embodigen.cli rollout --world raycast-lava --episodes 1 --seed 70 --lag-ms 300 --out data/raw
+	PYTHONPATH=src python3 -m embodigen.cli rollout --world raycast-maze --episodes 1 --seed 80 --seconds 60 --drift-ms-per-min 600 --out data/raw
+	PYTHONPATH=src python3 -m embodigen.cli curate --raw data/raw --out data/curated
+	PYTHONPATH=src python3 -m embodigen.cli build --curated data/curated --study configs/studies/reference.toml --out data/mixes
+
+# Real public recordings (VPT, D2E, Open-P2P): fetch -> ingest -> curate -> build.
+# D2E's zstd chunks need Python 3.14+ or `pip install -e '.[d2e]'`.
+samples:
+	python3 scripts/fetch_public_samples.py --out data/samples
+	PYTHONPATH=src python3 -m embodigen.cli ingest --source vpt --input data/samples/vpt --out data/samples-raw
+	PYTHONPATH=src python3 -m embodigen.cli ingest --source d2e --input data/samples/d2e --out data/samples-raw
+	PYTHONPATH=src python3 -m embodigen.cli ingest --source p2p --input data/samples/p2p --out data/samples-raw
+	PYTHONPATH=src python3 -m embodigen.cli curate --raw data/samples-raw --out data/samples-curated
+	PYTHONPATH=src python3 -m embodigen.cli build --curated data/samples-curated --study configs/studies/public-samples.toml --out data/samples-mixes
+
 docs:
 	python3 scripts/build_docs_assets.py --out docs/assets
 	python3 scripts/build_demo_gif.py
 
 clean:
-	rm -rf out build *.egg-info src/*.egg-info
+	rm -rf out data build *.egg-info src/*.egg-info

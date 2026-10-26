@@ -1,0 +1,49 @@
+# A miniature GameScaling grid on the stdlib reference worlds: runs anywhere
+# in a couple of minutes and exercises every rule of the real study config.
+name = "reference"
+anchor = "raycast-arena"          # plays the role Minecraft plays in the paper
+ood = ["raycast-caldera"]         # never enters any mixture
+budgets_hours = [0.02, 0.04, 0.08]
+vl_anchor_share = 0.15
+seed = 3407
+
+[windows]
+turns = 20
+stride = 10
+idle_turn_frac = 0.5
+idle_keep = 0.2
+stream_cap_hours = 0.03
+budget_unit = "footage"     # hours of gameplay; "window" counts overlapping windows in full
+
+[val]
+clips_per_world = 8
+in_corpus_worlds = 30
+min_title_pass_rate = 0.6
+
+[reasoning]
+rate = 0.057
+annotator = "mock"
+
+[serialize]
+shard_size = 32
+
+# Anchor share of gameplay segments, as in S1-S5.
+[[mixtures]]
+name = "S1"
+anchor_share = 1.0
+
+[[mixtures]]
+name = "S2"
+anchor_share = 0.514
+
+[[mixtures]]
+name = "S3"
+anchor_share = 0.271
+
+[[mixtures]]
+name = "S4"
+anchor_share = 0.028
+
+[[mixtures]]
+name = "S5"
+anchor_share = 0.0

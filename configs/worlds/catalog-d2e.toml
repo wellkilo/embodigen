@@ -1,0 +1,200 @@
+# D2E-480p titles (open-world-agents/D2E-480p; one folder per game). The D2E
+# adapter labels a folder by these names; Minecraft_1.21.8 resolves to the
+# anchor world in minecraft.toml. Category/view/franchise are our assignment
+# (GameScaling's taxonomy: AVG STG RPG RAC SIM OTH), not D2E's.
+#
+# mouse_scale: D2E logs raw HID counts at ~1 kHz. Measured on
+# recording_20250820_212408 (Counter-Strike 2): 3.2% of 200 ms packets hit the
+# +-1000 clip at scale 1.0, 0.0-0.1% for the other sampled games. Re-measure
+# with `embodigen ledger <curated>` (column "clip") before trusting a scale.
+
+[[world]]
+label = "apex-legends"
+title = "Apex Legends"
+category = "STG"
+view = "3D"
+franchise = "apex-legends"
+
+[[world]]
+label = "barony"
+title = "Barony"
+category = "RPG"
+view = "3D"
+
+[[world]]
+label = "battlefield-6"
+title = "Battlefield 6"
+category = "STG"
+view = "3D"
+aliases = ["Battlefield 6 Open Beta"]
+franchise = "battlefield"
+
+[[world]]
+label = "brotato"
+title = "Brotato"
+category = "STG"
+view = "2D"
+
+[[world]]
+label = "core-keeper"
+title = "Core Keeper"
+category = "SIM"
+view = "2.5D"
+
+[[world]]
+label = "counter-strike-2"
+title = "Counter-Strike 2"
+category = "STG"
+view = "3D"
+aliases = ["CS2"]
+franchise = "counter-strike"
+[world.sources.d2e]
+mouse_scale = 0.5
+
+[[world]]
+label = "cyberpunk-2077"
+title = "Cyberpunk 2077"
+category = "RPG"
+view = "3D"
+franchise = "cyberpunk"
+
+[[world]]
+label = "dinkum"
+title = "Dinkum"
+category = "SIM"
+view = "3D"
+
+[[world]]
+label = "eternal-return"
+title = "Eternal Return"
+category = "AVG"
+view = "2.5D"
+
+[[world]]
+label = "euro-truck-simulator-2"
+title = "Euro Truck Simulator 2"
+category = "RAC"
+view = "3D"
+aliases = ["ETS2"]
+franchise = "truck-simulator"
+
+[[world]]
+label = "grand-theft-auto-v"
+title = "Grand Theft Auto V"
+category = "AVG"
+view = "3D"
+aliases = ["GTA V", "GTA 5"]
+franchise = "grand-theft-auto"
+
+[[world]]
+label = "grounded"
+title = "Grounded"
+category = "SIM"
+view = "3D"
+
+[[world]]
+label = "maplestory-worlds"
+title = "MapleStory Worlds"
+category = "RPG"
+view = "2D"
+aliases = ["MapleStory Worlds Southperry"]
+franchise = "maplestory"
+
+[[world]]
+label = "medieval-dynasty"
+title = "Medieval Dynasty"
+category = "SIM"
+view = "3D"
+
+[[world]]
+label = "monster-hunter-wilds"
+title = "Monster Hunter Wilds"
+category = "RPG"
+view = "3D"
+franchise = "monster-hunter"
+
+[[world]]
+label = "oguforest"
+title = "Ogu and the Secret Forest"
+category = "AVG"
+view = "2D"
+aliases = ["OguForest"]
+
+[[world]]
+label = "peak"
+title = "PEAK"
+category = "AVG"
+view = "3D"
+
+[[world]]
+label = "pubg"
+title = "PUBG: Battlegrounds"
+category = "STG"
+view = "3D"
+aliases = ["PUBG", "PlayerUnknown's Battlegrounds"]
+franchise = "pubg"
+
+[[world]]
+label = "raft"
+title = "Raft"
+category = "SIM"
+view = "3D"
+
+[[world]]
+label = "rainbow-six-siege"
+title = "Rainbow Six Siege"
+category = "STG"
+view = "3D"
+aliases = ["Rainbow Six"]
+franchise = "rainbow-six"
+
+[[world]]
+label = "ready-or-not"
+title = "Ready or Not"
+category = "STG"
+view = "3D"
+
+[[world]]
+label = "satisfactory"
+title = "Satisfactory"
+category = "SIM"
+view = "3D"
+
+[[world]]
+label = "skul"
+title = "Skul: The Hero Slayer"
+category = "AVG"
+view = "2D"
+aliases = ["Skul"]
+
+[[world]]
+label = "slime-rancher"
+title = "Slime Rancher"
+category = "SIM"
+view = "3D"
+franchise = "slime-rancher"
+
+[[world]]
+label = "stardew-valley"
+title = "Stardew Valley"
+category = "SIM"
+view = "2D"
+
+[[world]]
+label = "super-bunny-man"
+title = "Super Bunny Man"
+category = "AVG"
+view = "2.5D"
+
+[[world]]
+label = "valorant"
+title = "VALORANT"
+category = "STG"
+view = "3D"
+franchise = "valorant"
+
+[[world]]
+label = "vampire-survivors"
+title = "Vampire Survivors"
+category = "STG"
+view = "2D"

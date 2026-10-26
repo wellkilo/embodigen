@@ -1,0 +1,13 @@
+# Anchor world of GameScaling (S1 = Minecraft only). Ingested from VPT
+# contractor recordings; no engine is driven from here.
+label = "minecraft"
+title = "Minecraft"
+category = "SIM"
+view = "3D"
+aliases = ["MC", "我的世界", "Minecraft Java Edition"]
+franchise = "minecraft"
+
+[sources.vpt]
+# VPT logs camera motion in raw mouse counts per 50 ms frame; summed over a
+# 200 ms packet they stay well inside [-1000, 1000]. Tune once per source.
+mouse_scale = 1.0

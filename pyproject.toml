@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embodigen"
-version = "0.2.0"
-description = "Task description in, label-exact photorealistic dataset out."
+version = "0.3.0"
+description = "Label-exact training data for embodied agents: robot episodes and virtual-world gameplay."
 readme = "README.md"
 requires-python = ">=3.11"  # tomllib for the robot configs
 license = { text = "TBD" }
 authors = [{ name = "EmbodiGen contributors" }]
-keywords = ["embodied-ai", "robot-learning", "synthetic-data", "sim2real", "lerobot"]
+keywords = ["embodied-ai", "robot-learning", "synthetic-data", "sim2real", "lerobot", "virtual-worlds", "gameplay", "vizdoom", "minecraft"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -24,6 +24,9 @@ dependencies = []
 sim = ["mani-skill>=3.0.0", "sapien>=3.0.0", "torch>=2.1"]
 photoreal = ["torch>=2.1", "diffusers>=0.27", "transformers>=4.38"]
 lerobot = ["pyarrow>=14", "pillow>=10"]
+env = ["vizdoom>=1.2.3"]
+# zstd-compressed MCAP chunks (D2E); Python 3.14+ reads them with the standard library.
+d2e = ["zstandard>=0.22; python_version < '3.14'"]
 dev = ["pytest>=8"]
 
 [project.scripts]

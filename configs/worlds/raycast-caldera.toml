@@ -1,0 +1,11 @@
+# Reference world on the stdlib raycaster (maze layout, lava palette, objective: exit).
+label = "raycast-caldera"
+title = "Raycast Caldera"
+category = "AVG"
+view = "3D"
+engine = "raycast"
+
+[engine_args]
+layout = "maze"
+theme = "lava"
+objective = "exit"

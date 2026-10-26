@@ -1,0 +1,11 @@
+# In-corpus world and the ViZDoom benchmark. Needs `pip install 'embodigen[env]'`.
+label = "doom"
+title = "DOOM"
+category = "STG"
+view = "3D"
+aliases = ["Doom", "Freedoom", "ViZDoom"]
+franchise = "doom"
+engine = "vizdoom"
+
+[engine_args]
+scenario = "deathmatch.cfg"

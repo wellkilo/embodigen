@@ -89,6 +89,19 @@ BACKENDS: dict[str, dict[str, str]] = {
     "pack": {
         "lerobot": "embodigen.modules.pack:LeRobotPacker",
     },
+    # Virtual-world track (embodigen.gameplay).
+    "env": {
+        "raycast": "embodigen.gameplay.envs.raycast:RaycastWorld",
+        "vizdoom": "embodigen.gameplay.envs.vizdoom_env:VizDoomEnv",
+    },
+    "source": {
+        "vpt": "embodigen.gameplay.sources.vpt:VPTSource",
+        "d2e": "embodigen.gameplay.sources.d2e:D2ESource",
+        "p2p": "embodigen.gameplay.sources.p2p:P2PSource",
+    },
+    "annotate": {
+        "mock": "embodigen.gameplay.annotate:MockAnnotator",
+    },
 }
 
 
