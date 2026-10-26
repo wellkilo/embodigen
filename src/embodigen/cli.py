@@ -180,7 +180,8 @@ def _cmd_curate(args: argparse.Namespace) -> int:
     from embodigen.gameplay.pipeline import curate, default_workers
     from embodigen.gameplay.quality import QualityConfig
 
-    cfg = QualityConfig(realign=not args.no_realign, alignment=not args.no_alignment)
+    cfg = QualityConfig(realign=not args.no_realign, alignment=not args.no_alignment,
+                        video_backend="" if args.no_video else args.video_backend)
     ledger = curate(Path(args.raw), Path(args.out), cfg, workers=args.workers or default_workers())
     for line in _curate_lines(Path(args.out)):
         print(line)
@@ -226,6 +227,10 @@ def _print_ledger(path: Path) -> None:
             print(f"{world:{width}s} {source:>8s} {w['recordings']:5d} {w['certified']:9d} {w['pass_rate']:6.0%} "
                   f"{w['hours_certified'] * 60:8.1f} {w.get('mouse_clipped_frac', 0.0):6.1%}  {reasons}")
         print("clip = share of 200 ms packets whose mouse motion hit +-1000 (tune sources.<name>.mouse_scale)")
+        counts = ledger.get("summary", {}).get("alignment")
+        if counts:
+            print("alignment: " + ", ".join(f"{k} {v}" for k, v in counts.items())
+                  + "  (inconclusive/skipped = not verifiable from pixels, not rejected)")
         return
     pool = ledger["pool"]
     print(f"study {ledger['study']}  config {ledger['config_hash']}  annotator {ledger['annotator']}")
@@ -348,6 +353,8 @@ def build_parser() -> argparse.ArgumentParser:
     cu.add_argument("--out", default="data/curated")
     cu.add_argument("--no-realign", action="store_true", help="reject desynced recordings instead of correcting them")
     cu.add_argument("--no-alignment", action="store_true", help="skip the action-frame alignment check")
+    cu.add_argument("--video-backend", default="pyav", help="decoder for frames kept in videos (pyav)")
+    cu.add_argument("--no-video", action="store_true", help="skip alignment on video-only recordings")
     cu.add_argument("--workers", "-j", type=int, default=0)
     cu.set_defaults(func=_cmd_curate)
 

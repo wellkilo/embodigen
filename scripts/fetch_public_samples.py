@@ -6,7 +6,7 @@ their owners (D2E: CC BY-NC 4.0; VPT: MIT data release; Open-P2P: see the
 dataset card); nothing here is committed to the repository.
 
     python3 scripts/fetch_public_samples.py --out data/samples          # action logs only (~70 MB)
-    python3 scripts/fetch_public_samples.py --out data/samples --video  # plus the videos (~0.3 GB)
+    python3 scripts/fetch_public_samples.py --out data/samples --video  # plus the videos (~0.9 GB)
 """
 
 from __future__ import annotations

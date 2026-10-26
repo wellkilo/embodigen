@@ -27,6 +27,8 @@ lerobot = ["pyarrow>=14", "pillow>=10"]
 env = ["vizdoom>=1.2.3"]
 # zstd-compressed MCAP chunks (D2E); Python 3.14+ reads them with the standard library.
 d2e = ["zstandard>=0.22; python_version < '3.14'"]
+# Decode frames kept inside videos (D2E .mkv, P2P/VPT .mp4) for the alignment check.
+video = ["av>=12"]
 dev = ["pytest>=8"]
 
 [project.scripts]

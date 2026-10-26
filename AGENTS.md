@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Python ≥ 3.11, standard library only. `src/embodigen` must not import third-party packages; heavy backends live behind the optional extras in `pyproject.toml` (`vizdoom` behind `[env]`, imported only by its backend module; `zstandard` behind `[d2e]`, used by the MCAP reader only when Python < 3.14 lacks `compression.zstd`).
+Python ≥ 3.11, standard library only. `src/embodigen` must not import third-party packages; heavy backends live behind the optional extras in `pyproject.toml` (`vizdoom` behind `[env]`, imported only by its backend module; `zstandard` behind `[d2e]`, used by the MCAP reader only when Python < 3.14 lacks `compression.zstd`; `av` behind `[video]`, imported only by `gameplay/video.py:PyAVFrames`).
 
 Two tracks: the robot pipeline (`embodigen.modules`, `embodigen gen`) and the virtual-world gameplay pipeline (`embodigen.gameplay`, `rollout`/`ingest` → `curate` → `build`) that produces GameScaling-style training data.
 
@@ -37,7 +37,7 @@ make samples                      # fetch -> ingest vpt/d2e/p2p -> curate -> bui
 embodigen ledger data/samples-curated
 ```
 
-It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.21.8` lands in world `minecraft`, and the build ledger prints `budgets nested True, train/val disjoint True`.
+It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.21.8` lands in world `minecraft`, and the build ledger prints `budgets nested True, train/val disjoint True`. With `make samples VIDEO=--video` and `.[video]` installed, the curate ledger must also show `alignment: aligned 8, inconclusive 1` (Brotato is top-down: nothing to verify).
 
 ## Common tasks
 
