@@ -73,14 +73,29 @@ class PyAVFrames:
 
     def profiles(self, root: Path, frames: list[Observation], columns: int,
                  band: tuple[float, float]) -> list[list[float]]:
+        return [_frame_profile(f, columns, band) for f in self._decode(root, [o.frame for o in frames])]
+
+    def rgb(self, root: Path, frame: str, max_width: int) -> tuple[int, int, bytes]:
+        """One referenced frame as packed RGB, downscaled to at most ``max_width``."""
+        (picked,) = self._decode(root, [frame])
+        w = min(max_width, picked.width)
+        h = max(2, round(picked.height * w / picked.width))
+        plane = picked.reformat(width=w, height=h, format="rgb24").planes[0]
+        raw = bytes(plane)
+        if plane.line_size != w * 3:
+            raw = b"".join(raw[y * plane.line_size : y * plane.line_size + w * 3] for y in range(h))
+        return w, h, raw
+
+    def _decode(self, root: Path, refs: list[str]) -> list:
+        """The decoded frame on screen at each reference time, in order."""
         import av
 
-        out: list[list[float]] = []
+        out = []
         runs: list[tuple[str, list[float]]] = []
-        for o in frames:
-            path, t = split_ref(o.frame)
+        for ref in refs:
+            path, t = split_ref(ref)
             if t is None:
-                raise ValueError(f"{o.frame} is not a video reference")
+                raise ValueError(f"{ref} is not a video reference")
             if runs and runs[-1][0] == path:
                 runs[-1][1].append(t)
             else:
@@ -94,7 +109,7 @@ class PyAVFrames:
                     stream.thread_type = "AUTO"
                     start = max(0.0, min(times) - 1.0)
                     container.seek(int(start / stream.time_base), stream=stream, backward=True)
-                    got = self._nearest(container.decode(stream), times, columns, band)
+                    got = self._nearest(container.decode(stream), times)
             except av.error.FFmpegError as exc:
                 raise VideoError(f"{path}: {exc}") from None
             if len(got) != len(times):
@@ -103,8 +118,8 @@ class PyAVFrames:
         return out
 
     @staticmethod
-    def _nearest(decoded, times: list[float], columns: int, band: tuple[float, float]) -> list[list[float]]:
-        out: list[list[float]] = []
+    def _nearest(decoded, times: list[float]) -> list:
+        out = []
         prev = None
         i = 0
         for frame in decoded:
@@ -112,14 +127,13 @@ class PyAVFrames:
                 continue
             while i < len(times) and frame.time >= times[i]:
                 # The frame on screen at times[i]: the newer one if it is closer.
-                pick = frame if prev is None or frame.time - times[i] < times[i] - prev.time else prev
-                out.append(_frame_profile(pick, columns, band))
+                out.append(frame if prev is None or frame.time - times[i] < times[i] - prev.time else prev)
                 i += 1
             if i == len(times):
                 return out
             prev = frame
         while i < len(times) and prev is not None:  # references past the last decoded frame
-            out.append(_frame_profile(prev, columns, band))
+            out.append(prev)
             i += 1
         return out
 

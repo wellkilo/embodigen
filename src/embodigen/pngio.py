@@ -21,6 +21,10 @@ def _chunk(tag: bytes, data: bytes) -> bytes:
 
 
 def write_png(path: str | Path, width: int, height: int, pixels: bytes, channels: int = 3) -> None:
+    Path(path).write_bytes(encode_png(width, height, pixels, channels))
+
+
+def encode_png(width: int, height: int, pixels: bytes, channels: int = 3) -> bytes:
     if len(pixels) != width * height * channels:
         raise ValueError(
             f"pixel buffer is {len(pixels)} bytes, expected {width * height * channels}"
@@ -32,13 +36,12 @@ def write_png(path: str | Path, width: int, height: int, pixels: bytes, channels
         raw.append(0)  # filter: none
         raw.extend(pixels[y * stride : (y + 1) * stride])
     ihdr = struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0)
-    blob = (
+    return (
         b"\x89PNG\r\n\x1a\n"
         + _chunk(b"IHDR", ihdr)
         + _chunk(b"IDAT", zlib.compress(bytes(raw), 6))
         + _chunk(b"IEND", b"")
     )
-    Path(path).write_bytes(blob)
 
 
 def _paeth(a: int, b: int, c: int) -> int:

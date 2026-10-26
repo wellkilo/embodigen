@@ -1,7 +1,7 @@
 """Command line.
 
 Robot track:          gen | validate | preview | index
-Virtual-world track:  worlds | rollout | ingest | curate | build | ledger
+Virtual-world track:  worlds | rollout | ingest | curate | build | ledger | llm
 Both:                 backends
 """
 
@@ -252,6 +252,78 @@ def _print_ledger(path: Path) -> None:
         print(f"note: {note}")
 
 
+def _cmd_llm_setup(args: argparse.Namespace) -> int:
+    import getpass
+
+    from embodigen.gameplay.llm import PROVIDERS, config_path, write_user_config
+
+    interactive = sys.stdin.isatty()
+
+    def ask(prompt: str) -> str:
+        if not interactive:
+            raise SystemExit(f"missing {prompt.strip(': ')}; pass it as a flag when not on a terminal")
+        return input(prompt).strip()
+
+    provider = args.provider or ask(f"provider ({' / '.join(PROVIDERS)}): ")
+    if provider not in PROVIDERS:
+        raise SystemExit(f"unknown provider {provider!r}; known: {', '.join(PROVIDERS)}")
+    base_url = args.base_url or (ask("base URL (…/v1): ") if provider == "custom" else "")
+    model = args.model or ask("model name (as the provider spells it, vision-capable if images are on): ")
+    if args.api_key_stdin:
+        key = sys.stdin.readline().strip()
+    elif interactive:
+        key = getpass.getpass(f"API key for {provider} (input hidden): ").strip()
+    else:
+        raise SystemExit("no API key: run on a terminal, or pipe it in with --api-key-stdin")
+    if not key or not model:
+        raise SystemExit("model and API key are both required")
+    path = write_user_config(
+        {"provider": provider, "model": model, "base_url": base_url, "images": not args.no_images, "api_key": key},
+        config_path(),
+    )
+    print(f"saved {path} (mode 600; the key is not printed or copied anywhere else)")
+    print("next: embodigen llm check --ping")
+    return 0
+
+
+def _cmd_llm_check(args: argparse.Namespace) -> int:
+    import time
+
+    from embodigen.gameplay.llm import ChatClient, LLMConfig, LLMError, clean
+
+    study = {}
+    if args.study:
+        from embodigen.gameplay.pipeline import load_study
+
+        study = load_study(Path(args.study)).reasoning.get("llm", {})
+    cfg = LLMConfig.load(study)
+    print(f"provider   {cfg.provider or 'custom'}")
+    print(f"base_url   {cfg.base_url or '-'}")
+    print(f"model      {cfg.model or '-'}")
+    print(f"images     {cfg.images}")
+    print(f"api key    {'set, from ' + cfg.key_source if cfg.api_key else 'MISSING'}")
+    problems = cfg.problems()
+    for p in problems:
+        print(f"problem    {p}")
+    if problems:
+        print("fix with `embodigen llm setup`")
+        return 1
+    if args.ping:
+        t0 = time.time()
+        try:
+            reply = ChatClient(cfg).complete({
+                "model": cfg.model,
+                "messages": [{"role": "user", "content": "Reply with the single word OK."}],
+                "max_tokens": 8,
+            })
+            text = clean(reply["choices"][0]["message"]["content"] or "")
+        except (LLMError, KeyError, IndexError, TypeError) as exc:
+            print(f"ping       FAILED: {exc}")
+            return 1
+        print(f"ping       ok in {time.time() - t0:.1f}s: {text!r}")
+    return 0
+
+
 def _cmd_ledger(args: argparse.Namespace) -> int:
     path = Path(args.path)
     path = path / "ledger.json" if path.is_dir() else path
@@ -363,8 +435,22 @@ def build_parser() -> argparse.ArgumentParser:
     bu.add_argument("--study", default="configs/studies/reference.toml")
     bu.add_argument("--out", default="data/mixes", help="written to <out>/<study name>/")
     bu.add_argument("--flat", action="store_true", help="write directly into --out")
-    bu.add_argument("--annotator", default=None, help="override the study's annotator backend")
+    bu.add_argument("--annotator", default=None, help="override the study's annotator backend (mock | llm)")
     bu.set_defaults(func=_cmd_build)
+
+    llm = sub.add_parser("llm", help="cloud model settings for the llm annotator (API key first)")
+    llm_sub = llm.add_subparsers(dest="llm_command", required=True)
+    ls = llm_sub.add_parser("setup", help="store provider, model and API key in ~/.config/embodigen/llm.toml")
+    ls.add_argument("--provider", help="dashscope | deepseek | moonshot | zhipu | ark | openai | custom")
+    ls.add_argument("--model")
+    ls.add_argument("--base-url", help="only for provider custom")
+    ls.add_argument("--no-images", action="store_true", help="text-only model: do not send frames")
+    ls.add_argument("--api-key-stdin", action="store_true", help="read the key from stdin instead of a prompt")
+    ls.set_defaults(func=_cmd_llm_setup)
+    lc = llm_sub.add_parser("check", help="show the resolved settings; --ping sends one tiny request")
+    lc.add_argument("--study", help="also read [reasoning.llm] from this study")
+    lc.add_argument("--ping", action="store_true")
+    lc.set_defaults(func=_cmd_llm_check)
 
     lg = sub.add_parser("ledger", help="print a curate or build ledger")
     lg.add_argument("path", help="a curated/ or mixes/<study>/ directory, or a ledger.json")

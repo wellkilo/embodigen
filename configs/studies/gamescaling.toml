@@ -26,7 +26,18 @@ min_title_pass_rate = 0.6 # paper
 
 [reasoning]
 rate = 0.057              # paper: 5.4-6.0% of assistant turns
-annotator = "mock"        # the paper used an LLM; register a model-backed annotator for real runs
+annotator = "mock"        # the paper used an LLM: switch to "llm" once `embodigen llm setup` has your API key
+
+# Cloud model for annotator = "llm" (OpenAI-compatible API). Provider and model
+# only: the API key comes from `embodigen llm setup` or the provider's
+# environment variable, never from this file. Environment variables
+# EMBODIGEN_LLM_PROVIDER / _MODEL / _BASE_URL override these.
+[reasoning.llm]
+# provider = "dashscope"  # dashscope | deepseek | moonshot | zhipu | ark | openai | custom
+# model = ""              # a vision-capable model when images = true
+images = true             # send the frame the player saw (needs [video] for frames inside videos)
+max_tokens = 160          # rationales are ~65 tokens in the paper
+workers = 8               # concurrent requests while filling the rationale cache
 
 [serialize]
 shard_size = 4096

@@ -23,7 +23,7 @@ min_title_pass_rate = 0.6
 
 [reasoning]
 rate = 0.057
-annotator = "mock"
+annotator = "mock"        # "llm" needs `embodigen llm setup` (cloud API key) and [video] for these frames
 
 [serialize]
 shard_size = 64
