@@ -14,14 +14,17 @@ keep that from confounding a scaling study:
 Backends implement :class:`embodigen.gameplay.base.Annotator`. ``mock`` writes
 templated rationales from the executed action and, for engine rollouts, the
 exact game state; a model-backed annotator plugs in through the same
-interface and inherits the cache below.
+interface and inherits the cache below (``llm`` in :mod:`embodigen.gameplay.llm`
+calls a cloud chat API and fills the cache concurrently before a build writes).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 from embodigen.gameplay.types import Turn
 from embodigen.gameplay.windows import h01
@@ -59,7 +62,7 @@ class MockAnnotator:
     name = "mock-rationale-v0"
     prompt_version = "v2"
 
-    def rationale(self, turn: Turn, context: list[Turn], world: str) -> str:
+    def rationale(self, turn: Turn, context: list[Turn], world: str, media: Any = None) -> str:
         motion = _motion(turn)
         state = turn.state or {}
         visible = state.get("visible") or []
@@ -102,23 +105,76 @@ class RationaleCache:
         raw = f"{annotator}\x1f{version}\x1f{recording_id}\x1f{turn_index}"
         return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
-    def get_or_make(self, annotator, recording_id: str, turn: Turn, context: list[Turn], world: str) -> str:
+    def get_or_make(self, annotator, recording_id: str, turn: Turn, context: list[Turn], world: str,
+                    media: Any = None) -> str:
         k = self.key(annotator.name, annotator.prompt_version, recording_id, turn.index)
         if k in self.store:
             self.hits += 1
             return self.store[k]
         self.misses += 1
-        text = annotator.rationale(turn, context, world).strip()
+        text = annotator.rationale(turn, context, world, media).strip()
+        self._put(k, recording_id, turn.index, text)
+        return text
+
+    def prefill(self, annotator, jobs: list[tuple[str, Turn, list[Turn], str, Any]], workers: int) -> int:
+        """Make every missing rationale in ``jobs`` with ``workers`` concurrent
+        calls, writing each to the cache as it lands. A failure stops the run
+        but keeps what was already paid for. Returns how many were made."""
+        todo: dict[str, tuple[str, Turn, list[Turn], str, Any]] = {}
+        for job in jobs:
+            k = self.key(annotator.name, annotator.prompt_version, job[0], job[1].index)
+            if k not in self.store:
+                todo.setdefault(k, job)
+        if not todo:
+            return 0
+        made, error = 0, None
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            futures = {pool.submit(annotator.rationale, job[1], job[2], job[3], job[4]): (k, job)
+                       for k, job in todo.items()}
+            try:
+                for fut in as_completed(futures):
+                    if fut.cancelled():
+                        continue
+                    k, job = futures[fut]
+                    try:
+                        text = fut.result().strip()
+                    except Exception as exc:  # stop launching, but keep harvesting what was paid for
+                        if error is None:
+                            error = exc
+                            for other in futures:
+                                other.cancel()
+                        continue
+                    self._put(k, job[0], job[1].index, text)
+                    made += 1
+            except BaseException:  # Ctrl-C: cancel the rest, keep the file consistent
+                for fut in futures:
+                    fut.cancel()
+                self.close()
+                raise
+        if error is not None:
+            self.close()
+            raise error
+        return made
+
+    def _put(self, k: str, recording_id: str, turn_index: int, text: str) -> None:
         self.store[k] = text
         if self.path:
             if self._fh is None:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 self._fh = self.path.open("a", encoding="utf-8")
-            self._fh.write(json.dumps({"key": k, "recording": recording_id, "turn": turn.index, "text": text},
+            self._fh.write(json.dumps({"key": k, "recording": recording_id, "turn": turn_index, "text": text},
                                       ensure_ascii=False) + "\n")
-        return text
+            self._fh.flush()
 
     def close(self) -> None:
         if self._fh:
             self._fh.close()
             self._fh = None
+
+
+def make_annotator(name: str, reasoning: dict[str, Any]):
+    """Instantiate a registered annotator; backends with settings read them from the study."""
+    from embodigen.modules.base import resolve
+
+    cls = resolve("annotate", name)
+    return cls.from_config(reasoning) if hasattr(cls, "from_config") else cls()

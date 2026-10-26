@@ -82,4 +82,6 @@ class Annotator(Protocol):
     name: str
     prompt_version: str
 
-    def rationale(self, turn: Turn, context: list[Turn], world: str) -> str: ...
+    def rationale(self, turn: Turn, context: list[Turn], world: str, media: Any = None) -> str:
+        """``media`` is (recording root, frame reference) for backends that look at the frame."""
+        ...

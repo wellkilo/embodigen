@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from embodigen.gameplay.actions import Canonicalizer, turn_from_json, turn_to_json
-from embodigen.gameplay.annotate import DEFAULT_RATE, RationaleCache
+from embodigen.gameplay.annotate import DEFAULT_RATE, RationaleCache, make_annotator, selected
 from embodigen.gameplay.mixture import MixtureBuilder, StudySpec, diversity
 from embodigen.gameplay.quality import AlignmentChecker, QualityConfig, assess, check_alignment
 from embodigen.gameplay.recording import discover, read_recording
@@ -311,7 +311,9 @@ def build(
     rate = float(study.reasoning.get("rate", DEFAULT_RATE))
     salt = f"think:{study.reasoning.get('salt', study.seed)}"
     shard_size = int(study.serialize.get("shard_size", 2048))
-    annotator = resolve("annotate", annotator_name or study.reasoning.get("annotator", "mock"))()
+    annotator = make_annotator(annotator_name or study.reasoning.get("annotator", "mock"), study.reasoning)
+    if hasattr(annotator, "check"):
+        annotator.check()  # e.g. a cloud annotator without its API key stops here, before any work
 
     store = _TurnStore(curated, by_id)
     windows: dict[str, list[Window]] = {
@@ -332,6 +334,7 @@ def build(
             shutil.rmtree(stale)
     cache = RationaleCache(out_dir / "cache" / f"rationales-{annotator.name}.jsonl")
     media = lambda rid: by_id[rid]["raw_dir"]  # noqa: E731 - tiny adapter
+    frame_root = lambda rid: Path(raw_root) / by_id[rid]["raw_dir"]  # noqa: E731
     config_hash = hashlib.sha256(
         json.dumps({"study": asdict(study), "curate": cur_ledger["quality"], "annotator": annotator.name},
                    sort_keys=True, default=str).encode()
@@ -351,11 +354,34 @@ def build(
         "annotator": annotator.name,
     }
 
+    # Annotators that call a service fill the cache concurrently first; the
+    # writing passes below then only read it. Budgets are nested, so the
+    # largest budget of each mixture covers every turn any run will need.
+    prefilled = 0
+    if rate > 0 and getattr(annotator, "workers", 1) > 1:
+        needed = [w for clips in splits.val.values() for w in clips]
+        for mix in study.mixtures:
+            needed += builder.select(mix, max(study.budgets_hours), wcfg.budget_unit)["windows"]
+        by_rec: dict[str, list[Window]] = {}
+        for w in needed:
+            by_rec.setdefault(w.recording_id, []).append(w)
+        jobs, seen = [], set()
+        for rid in sorted(by_rec):
+            turns = store.load(rid)
+            for w in by_rec[rid]:
+                for turn in turns[w.start : w.start + w.turns]:
+                    if (rid, turn.index) in seen or not selected(rid, turn.index, rate, salt):
+                        continue
+                    seen.add((rid, turn.index))
+                    context = turns[max(0, turn.index - 10) : turn.index]
+                    jobs.append((rid, turn, context, w.world, (frame_root(rid), turn.frame)))
+        prefilled = cache.prefill(annotator, jobs, annotator.workers)
+
     # Validation sets are shared by every mixture and budget.
     val_info = {}
     for level, clips in splits.val.items():
         writer = ShardWriter(out_dir / "val", level, len(clips), max(len(clips), 1), study.seed)
-        stats = write_samples(clips, store.load, media, writer, annotator, cache, rate, salt)
+        stats = write_samples(clips, store.load, media, writer, annotator, cache, rate, salt, frame_root)
         shards = writer.close()
         val_info[level] = {
             "clips": len(clips),
@@ -377,7 +403,7 @@ def build(
             previous = ids
             dest = out_dir / mix.name / f"{budget:g}h"
             writer = ShardWriter(dest, "train", len(chosen), shard_size, study.seed)
-            stats = write_samples(chosen, store.load, media, writer, annotator, cache, rate, salt)
+            stats = write_samples(chosen, store.load, media, writer, annotator, cache, rate, salt, frame_root)
             shards = writer.close()
             (dest / "windows.txt").write_text("".join(f"{i}\n" for i in sorted(ids)), encoding="utf-8")
             div = diversity(chosen)
@@ -452,8 +478,10 @@ def build(
             "budgets_nested": True,
             "train_val_disjoint": True,
             "rationale_density_spread": round(max(densities) - min(densities), 5) if densities else 0.0,
-            "rationale_cache": {"hits": cache.hits, "misses": cache.misses},
+            "rationale_cache": {"hits": cache.hits, "misses": cache.misses, "prefilled": prefilled},
         },
+        # Settings and token usage of a service-backed annotator; never its key.
+        "annotator_config": annotator.describe() if hasattr(annotator, "describe") else {"name": annotator.name},
         "notes": splits.notes,
     }
     _write_json(out_dir / "ledger.json", ledger)

@@ -49,8 +49,10 @@ def build_sample(
     cache: RationaleCache,
     rate: float,
     salt: str,
+    frame_root: Path | None = None,
 ) -> tuple[dict[str, Any], int]:
-    """Returns (sample, number of rationales in it)."""
+    """Returns (sample, number of rationales in it). ``frame_root`` is the
+    recording's raw directory, for annotators that look at the frame."""
     clip = turns[window.start : window.start + window.turns]
     if len(clip) != window.turns:
         raise ValueError(f"{window.window_id}: expected {window.turns} turns, got {len(clip)}")
@@ -61,7 +63,8 @@ def build_sample(
         rationale = None
         if rate > 0 and selected(window.recording_id, turn.index, rate, salt):
             context = turns[max(0, turn.index - 10) : turn.index]
-            rationale = cache.get_or_make(annotator, window.recording_id, turn, context, window.world)
+            media = (frame_root, turn.frame) if frame_root is not None else None
+            rationale = cache.get_or_make(annotator, window.recording_id, turn, context, window.world, media)
             thinks += 1
         messages.append({"role": "user", "content": IMAGE_TOKEN})
         messages.append({"role": "assistant", "content": assistant_text(turn, rationale)})
@@ -123,6 +126,7 @@ def write_samples(
     cache: RationaleCache,
     rate: float,
     salt: str,
+    frame_root: Callable[[str], Path] | None = None,
 ) -> dict[str, Any]:
     """Stream ``windows`` (grouped by recording) into ``writer``; returns reasoning stats."""
     turns_total = thinks_total = samples_with = 0
@@ -130,7 +134,8 @@ def write_samples(
     for window in sorted(windows, key=lambda w: (w.recording_id, w.start)):
         if window.recording_id != current:
             current, turns = window.recording_id, load_turns(window.recording_id)
-        sample, thinks = build_sample(window, turns, media_prefix(current), annotator, cache, rate, salt)
+        root = frame_root(current) if frame_root else None
+        sample, thinks = build_sample(window, turns, media_prefix(current), annotator, cache, rate, salt, root)
         writer.add(sample)
         turns_total += window.turns
         thinks_total += thinks

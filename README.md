@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-97_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-110_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -219,6 +219,39 @@ D2E 的《我的世界》和 VPT 被识别为同一个世界（`Minecraft_1.21.8
 
 只取动作日志时，对齐校验记为 `skipped`；加上 `VIDEO=--video` 并装好 `[video]` 后，9 条里有 8 条测得对齐，1 条（Brotato）无法验证。D2E 的游戏目录（29 款）和 P2P 已知标题放在 `configs/worlds/catalog-*.toml`，一个文件写多个 `[[world]]`。没登记的标题会用 slug 作为标签照常进入数据池。
 
+### 用云端大模型写 rationale
+
+`annotator = "llm"` 通过 **OpenAI 兼容的 Chat Completions 接口**调用云端模型。客户端只用标准库 `urllib` 实现，不需要额外装 SDK，也不需要在本地部署模型。内置以下服务商的接口地址：
+
+| provider | 接口地址 | 密钥环境变量 |
+|---|---|---|
+| `dashscope`（通义千问） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `DASHSCOPE_API_KEY` |
+| `deepseek` | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` |
+| `moonshot` | `https://api.moonshot.cn/v1` | `MOONSHOT_API_KEY` |
+| `zhipu` | `https://open.bigmodel.cn/api/paas/v4` | `ZHIPUAI_API_KEY` |
+| `ark`（火山方舟） | `https://ark.cn-beijing.volces.com/api/v3` | `ARK_API_KEY` |
+| `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
+| `custom` | 自己填 `base_url` | `EMBODIGEN_LLM_API_KEY` |
+
+**用之前必须先提供 API key**，没有 key 什么都不会运行：
+
+```bash
+embodigen llm setup            # 依次问服务商、模型名、API key（输入不回显），写入 ~/.config/embodigen/llm.toml，权限 600
+embodigen llm check --ping     # 显示最终生效的配置（key 只显示来源），发一个很小的请求确认能连通
+embodigen build --curated data/samples-curated --study configs/studies/public-samples.toml --annotator llm
+```
+
+- **缺配置时立刻停下**：`build --annotator llm` 一开始就检查服务商、模型名和 key，缺了就停，并提示去跑 `embodigen llm setup`。这时还没切分、也没写任何文件。
+- **配置优先级**：环境变量 > `~/.config/embodigen/llm.toml` > study 里的 `[reasoning.llm]`。
+- **key 只放在本地**：key 不会写进 study 文件，study 里出现 key 会直接被拒，因为 study 文件会提交进仓库。key 也不会出现在账本、缓存或输出里。
+- **模型看到什么**：发给模型的是玩家当时看到的那一帧（PNG 直接用；视频里的帧经 `[video]` 解码，缩到 448 宽），加上这 200 ms 里实际的按键和鼠标输入，以及前 1 秒的输入概况。模型据此写一两句第一人称的推理，不超过 50 词。
+- **动作标签不变**：rationale 只解释动作，不改动作。动作标签始终只来自输入日志。
+- **纯文本模型**：用不支持图片的模型时，设 `images = false`，就只发文字。
+- **并发和费用**：build 先找出所有配比和预算会用到的、被选中的回合，用 `workers` 个并发请求填满缓存，之后写分片时只读缓存。遇到 429、5xx 和超时会按退避策略重试；4xx 直接报错，不会反复浪费请求。中途失败时，已经拿到的结果都留在缓存里，重跑只补缺的部分；再次 build 不会发任何请求。
+- **账本记录**：`annotator_config` 记下服务商、模型、prompt 版本，以及请求数和 token 用量（不含 key）。缓存按"服务商 + 模型 + prompt 版本"分开，换模型不会和旧结果混在一起。
+
+目前还没有接真实服务商跑过：这台机器上没有任何服务商的 key。测试用的是进程内的假接口，覆盖了请求格式、图片、重试、失败后续跑、"无 key 不运行"，以及 key 不外泄。拿到 key 之后，先跑 `llm check --ping`，再抽一批 rationale 人工检查质量。
+
 ### 产物
 
 ```
@@ -266,7 +299,7 @@ data/
 - **新世界**：在 `configs/worlds/` 放一个 `<label>.toml`（类别、视角、别名、系列；能跑的世界再写 `engine` 和 `engine_args`）。`embodigen worlds` 会列出来。
 - **新数据集**：实现 `discover(root)` 和 `convert(path, out_root, registry)`，写出统一的原始布局，然后在 `BACKENDS["source"]` 注册。可以参照 `gameplay/sources/` 下的 `vpt.py`（逐帧 jsonl）、`d2e.py`（事件流）、`p2p.py`（逐帧 protobuf，一个文件切成多条录像）。
 - **新引擎**：实现 `reset / step / observe / done / close`，`observe` 返回的状态里带 `visible` 列表，脚本玩家就能直接驱动它。
-- **真正的推理标注**：实现 `rationale(turn, context, world)`，设置 `name` 和 `prompt_version`，注册到 `BACKENDS["annotate"]`。缓存和"每个回合只标一次"的规则自动生效。
+- **别的推理标注后端**：实现 `rationale(turn, context, world, media)`，设置 `name` 和 `prompt_version`，注册到 `BACKENDS["annotate"]`。缓存和"每个回合只标一次"的规则自动生效；有 `workers` 属性的后端会先并发填缓存（参照 `gameplay/llm.py`）。
 
 ## 机器人管线：它是什么
 
@@ -419,6 +452,7 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen curate --raw <dir> --out <dir> [--no-realign]` | 对齐校验、动作规范化、闸门 |
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
+| `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
 | `embodigen preview --recording <dir>` | 把一条录像画成带键鼠条的 GIF |
 
 常用参数：`--resolution`（默认 64）、`--fps`（8）、`--threshold`（12 mm）、`--attempts`（3）、`--drift`（首轮注入漂移，默认 25 mm，0 关闭）、`--seed`。
@@ -457,7 +491,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 97 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 110 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
@@ -472,7 +506,7 @@ make docs       # 从真实运行重建展示页素材（约 75 秒）
 - **渲染器是 mock**：它证明数据通路和闭环，不产生照片级画面。
 - **验证器靠颜色分割**：换材质要改参考色，真实实现应换成关键点跟踪；它还借用了真值深度来排除背景像素。
 - **只有一个抓放模板**：移动与人形只验证了接口和动作空间。
-- **虚拟世界：mock 标注器**：`mock-rationale-v0` 用模板加引擎状态写 rationale，只用来验证密度、缓存和模板。真实实验要注册一个模型后端，论文用的是 LLM。
+- **虚拟世界：默认用 mock 标注器**：`mock-rationale-v0` 用模板加引擎状态写 rationale，只用来验证密度、缓存和模板。云端模型后端 `llm` 已经实现，但还没在真实服务商上跑过，rationale 的质量要等提供 API key 后抽样检查。
 - **虚拟世界：视频只在对齐校验时解码**：帧以 `video.mkv#t=<秒>` 的形式引用，训练样本里也是这个引用，没有抽帧落盘。`preview --recording` 目前只支持 PNG 帧。没有镜头运动可对照的录像（俯视游戏）无法验证，会放行。D2E 数据集按游戏而不是按玩家组织，所以源流上限按游戏计；P2P 的鼠标滚轮只记方向。
 - **虚拟世界：参考世界是 mock**：`mock-raycast-v0` 证明的是数据通路和闸门，画面不是真游戏。真引擎目前只有 ViZDoom。
 - **预算单位是个假设**：默认把预算算作唯一游戏画面的小时数（`budget_unit = "footage"`），重叠窗口不重复计。如果论文是按窗口累计算的，改成 `"window"` 即可。token 数没有统计。
