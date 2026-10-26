@@ -37,7 +37,7 @@ from embodigen.gameplay.types import (
     Recording,
     Turn,
 )
-from embodigen.pngio import read_png
+from embodigen.gameplay.video import FrameReader, VideoError, png_profile, split_ref, video_reader
 
 
 @dataclass
@@ -55,11 +55,19 @@ class QualityConfig:
     realign: bool = True
     max_lag_ms: float = 600.0
     lag_tolerance_frames: float = 1.0
+    # Floor in ms: one 33 ms key slot is the finest timing an action packet
+    # records, so a smaller lag changes no label. Matters for 60 fps capture.
+    lag_tolerance_ms: float = 34.0
     min_corr: float = 0.2
     min_motion_std: float = 2.0
     align_max_frames: int = 450  # frames per measured segment
     align_segments: int = 3  # start / middle / end, when the recording is long enough
+    # Segments with camera motion but no correlation next to a measured one
+    # are approached in this many steps, each searching around the last lag:
+    # that follows a drifting clock past the +-max_lag_ms window.
+    align_probes: int = 4
     profile_columns: int = 80
+    video_backend: str = "pyav"  # decodes ``<file>#t=`` frames; "" skips video-only recordings
     # Rows used for the view profile: skips the floor (it streams past when
     # walking) and the bottom HUD most games draw.
     profile_band: tuple[float, float] = (0.1, 0.6)
@@ -134,22 +142,6 @@ def capture_reasons(m: dict[str, float], cfg: QualityConfig) -> list[str]:
 
 # -- alignment ----------------------------------------------------------------
 
-def _column_profile(path: Path, columns: int, band: tuple[float, float]) -> list[float]:
-    w, h, c, px = read_png(path)
-    columns = min(columns, w)
-    bins = [0.0] * columns
-    counts = [0] * columns
-    for y in range(int(h * band[0]), max(int(h * band[1]), int(h * band[0]) + 1)):
-        row = y * w * c
-        for x in range(w):
-            o = row + x * c
-            lum = px[o] if c == 1 else (px[o] * 3 + px[o + 1] * 6 + px[o + 2]) / 10.0
-            b = x * columns // w
-            bins[b] += lum
-            counts[b] += 1
-    return [s / max(n, 1) for s, n in zip(bins, counts)]
-
-
 def _shift(a: list[float], b: list[float], max_shift: int) -> float:
     """Horizontal shift of ``b`` against ``a``, in profile columns, refined to
     sub-column precision with a parabola through the best three costs."""
@@ -217,32 +209,55 @@ class AlignmentChecker:
     def __init__(self, cfg: QualityConfig) -> None:
         self.cfg = cfg
         self._profiles: dict[str, list[float]] = {}
+        self._video: FrameReader | None = None
+        self._video_note = ""
 
-    def segments(self, rec: Recording, root: Path) -> list[list[Observation]]:
-        frames = [o for o in rec.observations if o.frame.endswith(".png")]
-        if len(frames) < 20 or not (root / frames[0].frame).exists():
-            return []
-        n = min(len(frames), self.cfg.align_max_frames)
-        count = max(1, min(self.cfg.align_segments, len(frames) // n))
+    def _reader(self) -> FrameReader | None:
+        if self._video is None and not self._video_note:
+            self._video, self._video_note = video_reader(self.cfg.video_backend)
+        return self._video
+
+    def frames(self, rec: Recording, root: Path) -> tuple[list[Observation], str]:
+        """Observations whose pixels can be read, or ([], why not)."""
+        pngs = [o for o in rec.observations if o.frame.endswith(".png")]
+        if pngs:
+            return (pngs, "") if (root / pngs[0].frame).exists() else ([], "frames missing on disk")
+        videos = [o for o in rec.observations if split_ref(o.frame)[1] is not None]
+        if not videos:
+            return [], "no decoded frames"
+        if not (root / split_ref(videos[0].frame)[0]).exists():
+            return [], "video missing: frames are references only"
+        if self._reader() is None:
+            return [], self._video_note
+        return videos, ""
+
+    def tolerance_ms(self, frame_ms: float) -> float:
+        return max(self.cfg.lag_tolerance_frames * frame_ms, self.cfg.lag_tolerance_ms)
+
+    def starts(self, total: int, n: int) -> list[int]:
+        count = max(1, min(self.cfg.align_segments, total // n))
         if count == 1:
-            # The middle: start-up frames are often static.
-            starts = [(len(frames) - n) // 2]
-        else:
-            starts = [round(i * (len(frames) - n) / (count - 1)) for i in range(count)]
-        return [frames[s : s + n] for s in starts]
+            return [(total - n) // 2]  # the middle: start-up frames are often static
+        return [round(i * (total - n) / (count - 1)) for i in range(count)]
 
     def view_shifts(self, frames: list[Observation], root: Path) -> list[float]:
-        profiles = []
-        for o in frames:
+        band = tuple(self.cfg.profile_band)
+        todo = [o for o in frames if str(root / o.frame) not in self._profiles]
+        if todo and not todo[0].frame.endswith(".png"):
+            reader = self._reader()
+            assert reader is not None
+            for o, prof in zip(todo, reader.profiles(root, todo, self.cfg.profile_columns, band)):
+                self._profiles[str(root / o.frame)] = prof
+        for o in todo:
             key = str(root / o.frame)
             if key not in self._profiles:
-                self._profiles[key] = _column_profile(root / o.frame, self.cfg.profile_columns,
-                                                      tuple(self.cfg.profile_band))
-            profiles.append(self._profiles[key])
+                self._profiles[key] = png_profile(root / o.frame, self.cfg.profile_columns, band)
+        profiles = [self._profiles[str(root / o.frame)] for o in frames]
         span = len(profiles[0]) // 3
         return [_shift(profiles[i], profiles[i + 1], span) for i in range(len(profiles) - 1)]
 
-    def measure_segment(self, times: list[float], shifts: list[float], moves: list[tuple[float, float]]) -> dict[str, Any]:
+    def measure_segment(self, times: list[float], shifts: list[float], moves: list[tuple[float, float]],
+                        center_ms: float = 0.0) -> dict[str, Any]:
         dxs = []
         j = 0
         eps = 1e-6  # timestamps are logged to the microsecond
@@ -259,6 +274,7 @@ class AlignmentChecker:
             return {"status": "inconclusive", "reason": "not enough camera motion", "frames": len(times),
                     "t0": round(times[0], 3)}
         max_lag = max(1, int(round(self.cfg.max_lag_ms / 1000.0 / frame_dt)))
+        center = int(round(-center_ms / 1000.0 / frame_dt))
         # Pre-whiten by differencing: mouse motion is smooth, so raw series
         # correlate over a broad plateau of lags and the peak can sit a few
         # frames off. Changes in motion line up only at the true lag.
@@ -266,7 +282,9 @@ class AlignmentChecker:
         shifts = [shifts[i + 1] - shifts[i] for i in range(len(shifts) - 1)]
         dxs, shifts = _ranks(dxs), _ranks(shifts)
         best_lag, best = 0, 0.0
-        for lag in range(-max_lag, max_lag + 1):
+        for lag in range(center - max_lag, center + max_lag + 1):
+            if abs(lag) > len(dxs) // 2:  # keep at least half the segment overlapping
+                continue
             if lag >= 0:
                 a, b = dxs[: len(dxs) - lag], shifts[lag:]
             else:
@@ -276,7 +294,7 @@ class AlignmentChecker:
                 best_lag, best = lag, c
         if best < self.cfg.min_corr:
             status = "inconclusive"
-        elif abs(best_lag) <= self.cfg.lag_tolerance_frames:
+        elif abs(best_lag) * frame_dt * 1000.0 <= self.tolerance_ms(frame_dt * 1000.0) + 1e-6:
             status = "aligned"
         else:
             status = "misaligned"
@@ -290,15 +308,31 @@ class AlignmentChecker:
         }
 
     def measure(self, rec: Recording, root: Path, events: list[InputEvent]) -> dict[str, Any]:
-        segments = self.segments(rec, root)
-        if not segments:
-            return {"status": "skipped", "reason": "no decoded frames", "checker": self.name}
+        try:
+            return self._measure(rec, root, events)
+        except VideoError as exc:
+            return {"status": "skipped", "reason": f"video unreadable: {exc}", "checker": self.name}
+
+    def _measure(self, rec: Recording, root: Path, events: list[InputEvent]) -> dict[str, Any]:
+        frames, why = self.frames(rec, root)
+        if len(frames) < 20:
+            return {"status": "skipped", "reason": why or "too few frames", "checker": self.name}
+        n = min(len(frames), self.cfg.align_max_frames)
         moves = sorted((e.t, e.dx) for e in events if e.kind == MOVE)
-        parts = [self.measure_segment([o.t for o in seg], self.view_shifts(seg, root), moves) for seg in segments]
-        conclusive = [p for p in parts if p["status"] in ("aligned", "misaligned")]
+
+        def run(start: int, center_ms: float = 0.0) -> dict[str, Any]:
+            seg = frames[start : start + n]
+            part = self.measure_segment([o.t for o in seg], self.view_shifts(seg, root), moves, center_ms)
+            return {**part, "start": start}
+
+        parts = [run(s) for s in self.starts(len(frames), n)]
+        probes = self._track(parts, run)
+        conclusive = [p for p in parts + probes if p["status"] in ("aligned", "misaligned")]
         out: dict[str, Any] = {"checker": self.name}
         if len(parts) > 1:
-            out["segments"] = parts
+            out["segments"] = [_public(p) for p in parts]
+        if probes:
+            out["probes"] = [_public(p) for p in probes]
         if not conclusive:
             return {**out, "status": "inconclusive", "reason": parts[0].get("reason", "weak correlation")}
         lags = sorted(p["lag_ms"] for p in conclusive)
@@ -310,14 +344,42 @@ class AlignmentChecker:
             frame_ms=frame_ms,
         )
         # A constant offset is only established when every segment agrees.
-        out["complete"] = len(conclusive) == len(parts)
-        if lags[-1] - lags[0] > (2 * self.cfg.lag_tolerance_frames + 1) * frame_ms:
+        out["complete"] = all(p["status"] in ("aligned", "misaligned") for p in parts)
+        if lags[-1] - lags[0] > 2 * self.tolerance_ms(frame_ms) + frame_ms:
             out["status"] = "drift"
         elif all(p["status"] == "aligned" for p in conclusive):
             out["status"] = "aligned"
         else:
             out["status"] = "misaligned"
         return out
+
+    def _track(self, parts: list[dict[str, Any]], run) -> list[dict[str, Any]]:
+        """Walk from a measured segment towards each moving-but-uncorrelated
+        one, re-centring the lag search on every step. A segment reached this
+        way replaces the weak result; the steps are returned as probes."""
+        probes: list[dict[str, Any]] = []
+        measured = [i for i, p in enumerate(parts) if p["status"] in ("aligned", "misaligned")]
+        for i, part in enumerate(parts):
+            if part["status"] != "inconclusive" or "corr" not in part or not measured:
+                continue
+            j = min(measured, key=lambda m: abs(m - i))
+            a, b = parts[j]["start"], part["start"]
+            center = parts[j]["lag_ms"]
+            steps = self.cfg.align_probes
+            for k in range(1, steps + 2):
+                probe = run(round(a + (b - a) * k / (steps + 1)), center)
+                if probe["status"] in ("aligned", "misaligned"):
+                    center = probe["lag_ms"]
+                if k == steps + 1:
+                    if probe["status"] != "inconclusive":
+                        parts[i] = {**probe, "tracked": True}
+                else:
+                    probes.append(probe)
+        return probes
+
+
+def _public(part: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in part.items() if k != "start"}
 
 
 def shift_events(events: list[InputEvent], seconds: float, duration: float) -> list[InputEvent]:

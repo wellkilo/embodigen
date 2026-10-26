@@ -29,8 +29,10 @@ worlds:
 
 # Real public recordings (VPT, D2E, Open-P2P): fetch -> ingest -> curate -> build.
 # D2E's zstd chunks need Python 3.14+ or `pip install -e '.[d2e]'`.
+# `make samples VIDEO=--video` also fetches the videos (~0.9 GB) so curate can
+# check alignment from pixels (needs `pip install -e '.[video]'`).
 samples:
-	python3 scripts/fetch_public_samples.py --out data/samples
+	python3 scripts/fetch_public_samples.py --out data/samples $(VIDEO)
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source vpt --input data/samples/vpt --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source d2e --input data/samples/d2e --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source p2p --input data/samples/p2p --out data/samples-raw

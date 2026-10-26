@@ -102,6 +102,9 @@ BACKENDS: dict[str, dict[str, str]] = {
     "annotate": {
         "mock": "embodigen.gameplay.annotate:MockAnnotator",
     },
+    "video": {
+        "pyav": "embodigen.gameplay.video:PyAVFrames",
+    },
 }
 
 

@@ -256,6 +256,12 @@ def curate(raw_root: Path, out_dir: Path, qcfg: QualityConfig | None = None, wor
             "yield": round(certified / len(rows), 4),
             "hours_certified": round(sum(r["duration"] for r in rows if r["passed"]) / 3600.0, 5),
             "realigned": sum(1 for r in rows if r["passed"] and r["realigned_ms"]),
+            # aligned = measured and in sync; inconclusive/skipped = could not
+            # be verified from pixels (e.g. top-down games, no video decoder).
+            "alignment": {
+                status: sum(1 for r in rows if r["alignment"].get("status") == status)
+                for status in sorted({r["alignment"].get("status", "?") for r in rows})
+            },
         },
         "worlds": dict(sorted(worlds.items())),
     }

@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-91_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-97_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -125,6 +125,11 @@ build             →  data/mixes/<study>/          划分 · 窗口 · 配比 �
 
 录像够长时，在开头、中间、结尾各测一段。各段时延一致，说明是采集时的常数偏移，可以平移整份日志修正；各段不一致，说明是时钟漂移，用一个常数修不好，直接拒绝。只有部分段测得出结果时，也不做修正。
 
+两条规则来自真实数据：
+
+- **容差有毫秒下限（34 ms）**：一个动作包最细的时间单位是 33 ms 的按键槽，比这小的时延不改变任何标签。60 fps 采集时，一帧容差只有 16.7 ms，测量噪声就可能触发校正，所以加了这个下限。
+- **漂移追踪**：一段有镜头运动、却和鼠标不相关，而相邻一段测得出时，校验器从测得出的那段出发，分 4 步走向它，每一步都以上一步的时延为中心重新搜索。这样能跟住超出 ±600 ms 窗口的漂移。单纯放宽窗口不行：在真实录像上，±3000 ms 的窗口会让 Brotato 这类干净录像出现 0.25 的伪峰，被误判为漂移。
+
 真实运行结果（参考世界，30 Hz 录制）：
 
 | 条件 | 测得时延 | 判定 |
@@ -135,7 +140,19 @@ build             →  data/mixes/<study>/          划分 · 窗口 · 配比 �
 | ViZDoom 注入 +250 ms，`--no-realign` | +229 ms（35 Hz 下的 8 帧） | 拒绝 |
 | 输入日志按 600 ms/分钟 漂移（60 s 录像） | 三段分别 0 / 267 / 500 ms | `clock_drift`，拒绝 |
 
-只有视频、没有解码帧的录像（例如 VPT）记为 `skipped`，不会因此被拒。
+帧存在视频里的录像（VPT、D2E、P2P）通过 `video` 后端解码：`pip install -e '.[video]'` 安装 PyAV，校验器每段 seek 一次，向前解码，取灰度缩略图。没装解码器或视频不在本地时记为 `skipped`，不会因此被拒。
+
+真实公开录像上的结果（`make samples VIDEO=--video`；"注入"指把真实录像的输入日志整体平移或按比例拉伸后重新校验）：
+
+| 录像 | 自然状态 | 注入 +200 / −150 / +400 ms | 注入 600 ms/分钟 漂移 |
+|---|---|---|---|
+| VPT（20 fps） | 三段 0 ms，相关 0.31–0.77，对齐 | 测得 +200 / −150 / +400，校正后对齐 | `drift`，拒绝 |
+| Open-P2P（20 fps） | 三段 0 ms，对齐 | 测得 +200 / −150 / +400，校正后对齐 | `misaligned`，拒绝 |
+| D2E Minecraft（60 fps） | 三段 −50 / −17 / −33 ms，一致的约 −33 ms 采集偏移，校正后三段 −17 / 0 / +17 | 测得 +167 / −183 / +366（即注入值加上原有的 −33），校正后对齐 | 追踪到 −17 → −600 ms，`drift`，拒绝 |
+| D2E CS2（60 fps） | 开头在菜单里测不出，中段 0 ms，对齐 | 中段测得注入值，但开头测不出，不做校正，拒绝 | 三段都测不出，`inconclusive`，**放行** |
+| D2E Brotato（俯视 2D） | 鼠标只瞄准、不转镜头，`inconclusive`，放行 | — | — |
+
+最后两行是这项校验的边界：一条录像如果没有任何一段能和鼠标对上（俯视游戏，或者漂移大到每一段内部都被拉伸），它就无法验证，结果记为 `inconclusive`，照常放行。curate 账本会单独统计这类录像（`alignment: aligned 8, inconclusive 1`），由使用者决定是否要求它们必须通过验证。
 
 ### 账本长什么样
 
@@ -143,7 +160,7 @@ build             →  data/mixes/<study>/          划分 · 窗口 · 配比 �
 
 ```
   raycast-lava-0070-player-lag300    realigned +300 ms        PASS
-  raycast-maze-0080-player-drift600  drift (+500 ms)          REJECT  clock_drift: input/video lag moves across the recording ([0.0, 266.7, 500.0] ms)
+  raycast-maze-0080-player-drift600  drift (+267 ms)          REJECT  clock_drift: input/video lag moves across the recording ([0.0, 266.7, 500.0] ms)
   raycast-rooms-0050-afk             aligned                  REJECT  idle_windows: 100% of windows idle (limit 60%)
 certified    30/32 (94% yield), 15.0 min, 1 realigned -> data/curated
 
@@ -194,13 +211,13 @@ S1        0.2   0.201     237      1   1.00   1.00 100.0% 100.0%   5.3%   0.000
 S2        0.2   0.201     193      5   3.69   2.98  51.3%  51.3%   5.2%   0.000
 S3        0.2   0.200     192      5   4.54   4.28  27.6%  27.1%   5.1%   0.000
 S4        0.2   0.200     196      5   3.87   3.46  36.7%   2.5%   5.6%   0.000
-S5        0.2   0.200     197      5   3.56   3.30  38.1%   0.0%   5.6%   0.000
+S5        0.2   0.200     197      4   3.56   3.30  38.1%   0.0%   5.6%   0.000
 checks: budgets nested True, train/val disjoint True, rationale density spread 0.97%
 ```
 
 D2E 的《我的世界》和 VPT 被识别为同一个世界（`Minecraft_1.21.8` → `minecraft`），一起作为锚点；Call of Duty: Mobile 作为 OOD 留出。`clip` 列是鼠标位移撞到 ±1000 上限的动作包比例。CS2 在 `mouse_scale = 1.0` 时测得 3.2%，所以 `configs/worlds/catalog-d2e.toml` 给它设了 0.5（降到 0.4%）。其他游戏都在 0.5% 以内。
 
-这些样本只有动作日志，没有解码视频，所以对齐校验记为 `skipped`，这和 VPT 的处理一致。D2E 的游戏目录（29 款）和 P2P 已知标题放在 `configs/worlds/catalog-*.toml`，一个文件写多个 `[[world]]`。没登记的标题会用 slug 作为标签照常进入数据池。
+只取动作日志时，对齐校验记为 `skipped`；加上 `VIDEO=--video` 并装好 `[video]` 后，9 条里有 8 条测得对齐，1 条（Brotato）无法验证。D2E 的游戏目录（29 款）和 P2P 已知标题放在 `configs/worlds/catalog-*.toml`，一个文件写多个 `[[world]]`。没登记的标题会用 slug 作为标签照常进入数据池。
 
 ### 产物
 
@@ -440,7 +457,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 91 个单元测试（ViZDoom、zstd 和真实样本相关的测试在缺依赖时跳过）
+make test       # 97 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
@@ -456,7 +473,7 @@ make docs       # 从真实运行重建展示页素材（约 75 秒）
 - **验证器靠颜色分割**：换材质要改参考色，真实实现应换成关键点跟踪；它还借用了真值深度来排除背景像素。
 - **只有一个抓放模板**：移动与人形只验证了接口和动作空间。
 - **虚拟世界：mock 标注器**：`mock-rationale-v0` 用模板加引擎状态写 rationale，只用来验证密度、缓存和模板。真实实验要注册一个模型后端，论文用的是 LLM。
-- **虚拟世界：适配器不解码视频**：三个适配器都只读动作日志，帧以 `video.mkv#t=<秒>` 的形式引用。因此真实数据的对齐校验记为 `skipped`，这需要一个视频解码后端。D2E 数据集按游戏而不是按玩家组织，所以源流上限按游戏计；P2P 的鼠标滚轮只记方向。
+- **虚拟世界：视频只在对齐校验时解码**：帧以 `video.mkv#t=<秒>` 的形式引用，训练样本里也是这个引用，没有抽帧落盘。`preview --recording` 目前只支持 PNG 帧。没有镜头运动可对照的录像（俯视游戏）无法验证，会放行。D2E 数据集按游戏而不是按玩家组织，所以源流上限按游戏计；P2P 的鼠标滚轮只记方向。
 - **虚拟世界：参考世界是 mock**：`mock-raycast-v0` 证明的是数据通路和闸门，画面不是真游戏。真引擎目前只有 ViZDoom。
 - **预算单位是个假设**：默认把预算算作唯一游戏画面的小时数（`budget_unit = "footage"`），重叠窗口不重复计。如果论文是按窗口累计算的，改成 `"window"` 即可。token 数没有统计。
 - **许可证待定**：`pyproject.toml` 里是 `TBD`，正式开源前需要补上 LICENSE。
