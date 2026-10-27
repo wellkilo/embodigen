@@ -77,9 +77,9 @@ function initField() {
     const cx = width / 2;
     const cy = height * 0.42;
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(width, height) * 0.72);
-    g.addColorStop(0, "rgba(8,9,12,0)");
-    g.addColorStop(0.55, "rgba(8,9,12,0.35)");
-    g.addColorStop(1, "rgba(8,9,12,0.98)");
+    g.addColorStop(0, "rgba(5,19,23,0)");
+    g.addColorStop(0.55, "rgba(5,19,23,0.35)");
+    g.addColorStop(1, "rgba(5,19,23,0.98)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, width, height);
 
@@ -96,7 +96,7 @@ function initField() {
     ctx.lineWidth = 1;
     for (let i = -14; i <= 14; i++) {
       const xb = vx + i * width * 0.11;
-      ctx.strokeStyle = `rgba(47,123,255,${0.11 * fade * (1 - Math.abs(i) / 15)})`;
+      ctx.strokeStyle = `rgba(15,217,210,${0.11 * fade * (1 - Math.abs(i) / 15)})`;
       ctx.beginPath();
       ctx.moveTo(vx + i * 6, horizon);
       ctx.lineTo(xb, height);
@@ -106,7 +106,7 @@ function initField() {
     for (let k = 0; k < 12; k++) {
       const s = (k + phase) / 12;
       const y = horizon + (height - horizon) * s * s;
-      ctx.strokeStyle = `rgba(47,123,255,${0.13 * fade * s})`;
+      ctx.strokeStyle = `rgba(15,217,210,${0.13 * fade * s})`;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
@@ -116,7 +116,7 @@ function initField() {
     const scan = REDUCED ? 0.5 : (t * 0.18) % 1;
     const sy = horizon + (height - horizon) * scan * scan;
     const g = ctx.createLinearGradient(0, sy - 30, 0, sy + 2);
-    g.addColorStop(0, "rgba(47,123,255,0)");
+    g.addColorStop(0, "rgba(15,217,210,0)");
     g.addColorStop(1, `rgba(120,170,255,${0.22 * fade})`);
     ctx.fillStyle = g;
     ctx.fillRect(0, sy - 30, width, 32);

@@ -52,6 +52,7 @@ It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.
 | Rebuild showcase assets | `python3 scripts/build_docs_assets.py --out docs/assets` |
 | Rebuild the README GIF | `python3 scripts/build_demo_gif.py` |
 | Rebuild favicons | `python3 scripts/build_favicon.py --out docs` |
+| Rebuild the virtual-world showcase numbers | `python3 scripts/build_gameplay_assets.py [--inject]` (reads the `make worlds` / `make samples` ledgers) |
 | List virtual worlds | `embodigen worlds` |
 | Record gameplay | `embodigen rollout --world all --episodes 3 --out data/raw` |
 | Convert VPT recordings | `embodigen ingest --source vpt --input <dir> --out data/raw` |

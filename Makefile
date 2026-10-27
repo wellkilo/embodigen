@@ -42,6 +42,7 @@ samples:
 docs:
 	python3 scripts/build_docs_assets.py --out docs/assets
 	python3 scripts/build_demo_gif.py
+	python3 scripts/build_gameplay_assets.py
 
 clean:
 	rm -rf out data build *.egg-info src/*.egg-info

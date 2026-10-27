@@ -19,9 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from embodigen.pngio import write_png  # noqa: E402
 
-BG = (10, 12, 16)
-INK = (201, 210, 223)
-BLUE = (47, 123, 255)
+BG = (5, 19, 23)
+INK = (200, 205, 207)
+BLUE = (15, 217, 210)  # the showcase accent (cyan)
 
 # Normalised geometry (0..1 square).
 BG_RADIUS = 0.2
@@ -100,9 +100,9 @@ def ico(pngs: list[bytes], sizes: list[int]) -> bytes:
 
 
 SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6.4" fill="#0a0c10"/>
-  <rect x="4.8" y="4.8" width="10.72" height="22.4" fill="#c9d2df"/>
-  <rect x="16.48" y="4.8" width="10.72" height="22.4" fill="#2f7bff"/>
+  <rect width="32" height="32" rx="6.4" fill="#051317"/>
+  <rect x="4.8" y="4.8" width="10.72" height="22.4" fill="#c8cdcf"/>
+  <rect x="16.48" y="4.8" width="10.72" height="22.4" fill="#0fd9d2"/>
 </svg>
 """
 

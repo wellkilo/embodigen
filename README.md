@@ -1,9 +1,9 @@
 <p align="center">
   <a href="https://wellkilo.github.io/embodigen/">
-    <img src="docs/assets/showcase.gif" width="860" alt="EmbodiGen 展示页：三维实况回放、通道切换、验证闸门与批量生成" />
+    <img src="docs/assets/showcase.gif" width="860" alt="EmbodiGen 展示页：虚拟世界管线的真实数据、配比与对齐校验，机器人三维实况回放与通道切换" />
   </a>
   <br />
-  <sub>▶ <a href="https://wellkilo.github.io/embodigen/assets/showcase.mp4">观看 68 秒完整演示视频（MP4）</a> · 页面上的每个数字和每一帧都来自管线的真实运行</sub>
+  <sub>▶ <a href="https://wellkilo.github.io/embodigen/assets/showcase.mp4">观看 69 秒完整演示视频（MP4）</a> · 页面上的每个数字和每一帧都来自管线的真实运行</sub>
 </p>
 
 <h1 align="center">EmbodiGen</h1>
@@ -183,6 +183,10 @@ note: pool too small for S1@0.08h: those runs are smaller than their budget (sha
 （只截了最大一档预算；完整网格在 `data/mixes/reference/ledger.json`。）S1 在这一档锚点数据不够，账本如实写出缺口，而不是从别的世界补。
 
 ### 真实公开数据
+
+<p align="center">
+  <img src="docs/assets/screens/worlds.jpg" width="860" alt="展示页：S1–S5 配比在最大预算档的锚点占比与 Hill D；在真实录像上注入时延后的对齐校验结果" />
+</p>
 
 三个适配器都按公开数据的真实文件写成并验证过：字段名、编码和怪癖都取自下载下来的样本，没有靠猜。`make samples` 会下载这些样本（只取动作日志，约 88 MB；视频用 `--video` 另取），全程跑一遍：
 
@@ -496,10 +500,10 @@ make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
 make samples    # 真实公开数据：下载 → ingest → curate → build（D2E 需要 Python 3.14+ 或 pip install -e '.[d2e]'）
-make docs       # 从真实运行重建展示页素材（约 75 秒）
+make docs       # 从真实运行重建展示页素材（约 75 秒；虚拟世界部分读 make worlds / make samples 的账本）
 ```
 
-展示页在 `docs/`，纯静态、无构建步骤，直接用浏览器打开 `docs/index.html` 即可。三维回放（`docs/assets/live.js`）是一个约 600 行的 Canvas2D 渲染器，读取的是 `build_docs_assets.py` 从真实 episode 导出的数据。
+展示页在 `docs/`，纯静态、无构建步骤，直接用浏览器打开 `docs/index.html` 即可。深色主题（深青黑底、青色强调、衬线标题）。虚拟世界一节的数字来自 `docs/assets/gameplay.js`，由 `scripts/build_gameplay_assets.py` 从真实账本导出（`--inject` 会在真实录像上重跑注入时延实验）。三维回放（`docs/assets/live.js`）是一个约 600 行的 Canvas2D 渲染器，读取的是 `build_docs_assets.py` 从真实 episode 导出的数据。
 
 ## 边界
 
