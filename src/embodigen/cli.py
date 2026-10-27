@@ -1,14 +1,15 @@
 """Command line.
 
 Robot track:          gen | validate | preview | index
-Virtual-world track:  worlds | rollout | ingest | curate | build | ledger | llm
-Both:                 backends
+Virtual-world track:  worlds | rollout | fetch | ingest | curate | build | ledger | llm
+Both:                 backends | ui (a local web console for all of the above)
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -325,6 +326,18 @@ def _cmd_llm_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fetch(args: argparse.Namespace) -> int:
+    from embodigen.gameplay.sources.fetch import fetch
+
+    return fetch(Path(args.out), video=args.video, hf_endpoint=args.hf_endpoint)
+
+
+def _cmd_ui(args: argparse.Namespace) -> int:
+    from embodigen.ui.server import serve
+
+    return serve(Path(args.root), host=args.host, port=args.port, open_browser=args.open)
+
+
 def _cmd_ledger(args: argparse.Namespace) -> int:
     path = Path(args.path)
     path = path / "ledger.json" if path.is_dir() else path
@@ -415,6 +428,13 @@ def build_parser() -> argparse.ArgumentParser:
     ro.add_argument("--workers", "-j", type=int, default=0)
     ro.set_defaults(func=_cmd_rollout)
 
+    fe = sub.add_parser("fetch", help="download the real public sample recordings (VPT, D2E, Open-P2P)")
+    fe.add_argument("--out", default="data/samples")
+    fe.add_argument("--video", action="store_true", help="also fetch the videos the frames point into (~0.9 GB)")
+    fe.add_argument("--hf-endpoint", default=os.environ.get("HF_ENDPOINT", ""),
+                    help="Hugging Face mirror, e.g. https://hf-mirror.com (default: $HF_ENDPOINT)")
+    fe.set_defaults(func=_cmd_fetch)
+
     ig = sub.add_parser("ingest", parents=[wd], help="convert a dataset's recordings into the raw layout")
     ig.add_argument("--source", required=True, help="vpt | d2e | p2p")
     ig.add_argument("--input", required=True)
@@ -458,6 +478,13 @@ def build_parser() -> argparse.ArgumentParser:
     lg.add_argument("path", help="a curated/ or mixes/<study>/ directory, or a ledger.json")
     lg.set_defaults(func=_cmd_ledger)
 
+    ui = sub.add_parser("ui", help="local web console: run every step from the browser, with live logs")
+    ui.add_argument("--root", default=".", help="workspace the steps run in (default: current directory)")
+    ui.add_argument("--host", default="127.0.0.1", help="bind address (keep 127.0.0.1; use an SSH tunnel for remote hosts)")
+    ui.add_argument("--port", type=int, default=8765)
+    ui.add_argument("--open", action="store_true", help="open the page in a browser")
+    ui.set_defaults(func=_cmd_ui)
+
     b = sub.add_parser("backends", help="list registered backends and robots")
     b.set_defaults(func=_cmd_backends)
     return p
@@ -465,7 +492,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except KeyboardInterrupt:  # Ctrl+C, or Stop in `embodigen ui`
+        print("\ninterrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

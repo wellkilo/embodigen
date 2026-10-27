@@ -37,6 +37,7 @@ jobs:
           embodigen build --curated data/curated --study configs/studies/reference.toml --out data/mixes
           embodigen ledger data/mixes/reference
           embodigen preview --recording data/raw/raycast-arena-0000 --max-frames 6
+          embodigen ui --help > /dev/null && embodigen fetch --help > /dev/null
 
   public-formats:
     # D2E's zstd MCAP chunks read with the 3.14 standard library; the

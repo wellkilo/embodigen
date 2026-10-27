@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>EmbodiGen 控制台</title>
+<link rel="stylesheet" href="/static/console.css" />
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>EmbodiGen <em>控制台</em></div>
+  <div class="env" id="env"></div>
+</header>
+
+<div class="layout">
+  <nav class="tabs" aria-label="页面">
+    <button data-tab="start" class="on">快速开始</button>
+    <button data-tab="steps">分步操作</button>
+    <button data-tab="data">数据与结果</button>
+    <button data-tab="model">模型设置<span class="dot" id="model-dot"></span></button>
+    <button data-tab="robot">机器人</button>
+  </nav>
+
+  <main>
+    <!-- quick start -->
+    <section data-page="start" class="page on">
+      <h1>一键跑通</h1>
+      <p class="lede">每个按钮都会执行一串普通的 <code>embodigen</code> 命令，右侧会实时显示命令和日志，随时可以停止。</p>
+      <ol class="flow" aria-label="流程">
+        <li><b>获取</b><span>录制或下载</span></li>
+        <li><b>导入</b><span>统一格式</span></li>
+        <li><b>筛选</b><span>对齐与质检</span></li>
+        <li><b>构建</b><span>S1–S5 训练集</span></li>
+        <li><b>查看</b><span>账本与预览</span></li>
+      </ol>
+      <div class="cards">
+        <form class="card" data-action="preset-worlds">
+          <h2>参考世界</h2>
+          <p>在 7 个内置的光线投射小世界里录制 32 段操作，故意混入挂机、300 ms 错位和时钟漂移各一段，再筛选、构建。不用下载，几分钟跑完。</p>
+          <p class="hint">完成后：30/32 通过，错位那段显示 <code>realigned +300 ms</code>。</p>
+          <div class="cmd" data-plan></div>
+          <button class="run">运行</button>
+        </form>
+        <form class="card" data-action="preset-samples">
+          <h2>公开样例</h2>
+          <p>下载 VPT、D2E、Open-P2P 各 3 段真人录像，转换、筛选、构建一个迷你训练集。</p>
+          <label class="check"><input type="checkbox" name="video" /> 同时下载视频（约 0.9 GB，用于从画面检查对齐）</label>
+          <p class="warn" data-need="video" hidden>未安装视频解码：<code>pip install -e '.[video]'</code>，否则对齐检查会跳过。</p>
+          <label><span class="lab">Hugging Face 镜像<span class="opt">可选</span></span>
+            <input name="hf_endpoint" placeholder="https://hf-mirror.com" list="mirrors" />
+          </label>
+          <label>理由标注
+            <select name="annotator">
+              <option value="">按研究配置（mock）</option>
+              <option value="mock">mock 模板</option>
+              <option value="llm">云端大模型（需先在「模型设置」填写）</option>
+            </select>
+          </label>
+          <div class="cmd" data-plan></div>
+          <button class="run">运行</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- individual steps -->
+    <section data-page="steps" class="page">
+      <h1>分步操作</h1>
+      <p class="lede">和命令行一一对应。路径都相对工作目录，输入框会提示已有的数据目录。</p>
+      <div class="cards">
+        <form class="card" data-action="fetch">
+          <h2><i>1</i>下载公开样例</h2>
+          <label>保存到 <input name="out" value="data/samples" /></label>
+          <label class="check"><input type="checkbox" name="video" /> 同时下载视频（约 0.9 GB）</label>
+          <label><span class="lab">Hugging Face 镜像<span class="opt">可选</span></span>
+            <input name="hf_endpoint" placeholder="https://hf-mirror.com" list="mirrors" />
+          </label>
+          <p class="hint">中断后再次运行会断点续传，已下载的文件会跳过。</p>
+          <div class="cmd" data-plan></div>
+          <button class="run">下载</button>
+        </form>
+
+        <form class="card" data-action="rollout">
+          <h2><i>1</i>录制（内置世界）</h2>
+          <label>世界 <select name="worlds" multiple size="5" id="world-select"></select></label>
+          <p class="hint">不选 = 全部光线投射世界。按住 Ctrl / ⌘ 多选。</p>
+          <div class="row">
+            <label>每个世界几段 <input name="episodes" type="number" min="1" max="200" value="2" /></label>
+            <label>每段秒数 <input name="seconds" type="number" min="2" max="1800" value="30" /></label>
+          </div>
+          <div class="row">
+            <label>玩家行为
+              <select name="profile"><option value="player">正常游玩</option><option value="afk">挂机</option><option value="distracted">分心</option></select>
+            </label>
+            <label>随机种子 <input name="seed" type="number" min="0" value="0" /></label>
+          </div>
+          <details>
+            <summary>故障注入（测试质检用）</summary>
+            <div class="row">
+              <label>输入错位 ms <input name="lag_ms" type="number" value="0" /></label>
+              <label>时钟漂移 ms/分 <input name="drift_ms_per_min" type="number" min="0" value="0" /></label>
+            </div>
+          </details>
+          <label>保存到 <input name="out" value="data/raw" list="dl-raw" /></label>
+          <div class="cmd" data-plan></div>
+          <button class="run">录制</button>
+        </form>
+
+        <form class="card" data-action="ingest">
+          <h2><i>2</i>导入真人数据</h2>
+          <label>数据来源
+            <select name="source"><option value="vpt">VPT（OpenAI Minecraft）</option><option value="d2e">D2E（OWAMcap）</option><option value="p2p">Open-P2P</option></select>
+          </label>
+          <label>输入目录 <input name="input" list="dl-inputs" placeholder="data/samples/vpt" /></label>
+          <label>输出到 <input name="out" value="data/raw" list="dl-raw" /></label>
+          <p class="warn" data-need="zstd" hidden>D2E 需要 Python 3.14+ 或 <code>pip install -e '.[d2e]'</code>。</p>
+          <div class="cmd" data-plan></div>
+          <button class="run">导入</button>
+        </form>
+
+        <form class="card" data-action="curate">
+          <h2><i>3</i>筛选与对齐</h2>
+          <label>原始录像目录 <input name="raw" value="data/raw" list="dl-raw" /></label>
+          <label>输出到 <input name="out" value="data/curated" list="dl-curated" /></label>
+          <label class="check"><input type="checkbox" name="video" checked /> 解码视频检查对齐</label>
+          <label class="check"><input type="checkbox" name="realign" checked /> 自动校正固定错位（否则直接拒绝）</label>
+          <div class="cmd" data-plan></div>
+          <button class="run">筛选</button>
+        </form>
+
+        <form class="card" data-action="build">
+          <h2><i>4</i>构建训练集</h2>
+          <label>筛选结果目录 <input name="curated" value="data/curated" list="dl-curated" /></label>
+          <label>研究配置 <select name="study" id="study-select"></select></label>
+          <label>理由标注
+            <select name="annotator">
+              <option value="">按研究配置</option>
+              <option value="mock">mock 模板</option>
+              <option value="llm">云端大模型</option>
+            </select>
+          </label>
+          <label>输出到 <input name="out" value="data/mixes" /></label>
+          <div class="cmd" data-plan></div>
+          <button class="run">构建</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- data -->
+    <section data-page="data" class="page">
+      <h1>数据与结果</h1>
+      <p class="lede">工作目录下 <code>data/</code> 与 <code>out/</code> 里已有的数据。<button class="link" id="rescan">重新扫描</button></p>
+      <div id="datasets"></div>
+      <div id="detail"></div>
+    </section>
+
+    <!-- model -->
+    <section data-page="model" class="page">
+      <h1>模型设置</h1>
+      <p class="lede">理由标注用云端 OpenAI 兼容接口，不在本机部署模型。先填好 key，带 <code>llm</code> 标注的任务才会开始。</p>
+      <div class="status" id="llm-status"></div>
+      <form class="card wide" id="llm-form">
+        <div class="row">
+          <label>服务商 <select name="provider" id="provider-select"></select></label>
+          <label>模型名 <input name="model" placeholder="如 qwen-vl-max" autocomplete="off" /></label>
+        </div>
+        <label data-custom hidden>Base URL <input name="base_url" placeholder="https://…/v1" autocomplete="off" /></label>
+        <label>API key
+          <input name="api_key" type="password" autocomplete="off" spellcheck="false" id="key-input" />
+        </label>
+        <label class="check"><input type="checkbox" name="images" checked /> 发送游戏画面（需要视觉模型；纯文本模型请取消）</label>
+        <p class="hint" id="key-note"></p>
+        <div class="buttons">
+          <button type="submit" class="run">保存</button>
+          <button type="button" class="ghost" id="llm-ping">测试连接</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- robot -->
+    <section data-page="robot" class="page">
+      <h1>机器人数据</h1>
+      <p class="lede">机器人轨道：从一句任务描述生成带逐帧真值的仿真回合，过不了保真度闸门的回合不会进入数据集。</p>
+      <form class="card wide" data-action="gen">
+        <label>任务 <input name="task" value="把红色方块放进盒子" /></label>
+        <div class="row">
+          <label>机器人 <select name="robot" id="robot-select"></select></label>
+          <label>回合数 <input name="episodes" type="number" min="1" max="64" value="1" /></label>
+          <label>分辨率 <select name="resolution"><option>64</option><option selected>96</option><option>128</option></select></label>
+        </div>
+        <label>输出到 <input name="out" value="out" /></label>
+        <div class="cmd" data-plan></div>
+        <button class="run">生成</button>
+      </form>
+    </section>
+  </main>
+
+  <aside class="job" id="job" aria-live="polite">
+    <div class="job-head">
+      <span class="pill" id="job-status">空闲</span>
+      <b id="job-title">还没有任务</b>
+      <button class="stop" id="job-stop" hidden>停止</button>
+    </div>
+    <ol class="job-steps" id="job-steps"></ol>
+    <pre class="log" id="job-log"></pre>
+    <div class="job-art" id="job-art"></div>
+    <details class="history"><summary>最近任务</summary><ul id="job-history"></ul></details>
+  </aside>
+</div>
+
+<datalist id="mirrors"><option value="https://hf-mirror.com"></option></datalist>
+<datalist id="dl-inputs"></datalist>
+<datalist id="dl-raw"></datalist>
+<datalist id="dl-curated"></datalist>
+<div class="toast" id="toast" role="alert" hidden></div>
+<script src="/static/console.js"></script>
+</body>
+</html>

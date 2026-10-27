@@ -18,13 +18,14 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-112_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-120_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
 <p align="center">
   <a href="https://wellkilo.github.io/embodigen/"><b>在线展示</b></a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#网页控制台">网页控制台</a> ·
   <a href="#虚拟世界管线gamescaling">虚拟世界管线</a> ·
   <a href="#机器人管线它是什么">机器人管线</a> ·
   <a href="#输出长什么样">数据格式</a> ·
@@ -63,6 +64,8 @@ make samples   # 真实公开数据：下载 VPT / D2E / Open-P2P 各 3 条 → 
 embodigen ledger  data/mixes/reference                                      # S1–S5 × 预算 的账本
 ```
 
+不想记命令？`embodigen ui` 打开[网页控制台](#网页控制台)，同样的步骤都能点按钮完成。
+
 零第三方依赖，Python ≥ 3.11，不需要 GPU（ViZDoom 后端是可选的 `[env]` extra）。单条 96 px 约 3 秒，8 条 64 px 用 4 进程约 3.5 秒（Apple Silicon 实测）。
 
 <details>
@@ -82,6 +85,26 @@ written      out/episodes/franka-0000
 `attempts 2`：第一次渲染被默认注入 25 mm 几何漂移（`--drift`，用来演示闭环），验证器拒绝，第二次加严几何条件后通过。用 `--drift 0` 可关闭注入。
 
 </details>
+
+## 网页控制台
+
+```bash
+embodigen ui            # 打印 http://127.0.0.1:8765/#token=…，用浏览器打开这个完整链接
+```
+
+<p align="center">
+  <img src="docs/assets/screens/console.jpg" width="860" alt="网页控制台：左侧分页，中间是筛选结果账本（30/32 通过、各录像的对齐结论），右侧是正在跑的任务、每一步命令和实时日志" />
+</p>
+
+把命令行的每一步做成表单：
+
+- **快速开始**：「参考世界」「公开样例」各一个按钮，等价于 `make worlds` / `make samples`，可勾选下载视频、填 Hugging Face 镜像、选理由标注器。
+- **分步操作**：下载、录制、导入、筛选、构建，表单下方实时显示将要执行的 `embodigen …` 命令，照抄到终端效果相同。
+- **数据与结果**：扫描 `data/`、`out/`，点开就能看筛选账本（每条录像的对齐与拒绝理由）、训练集网格（S1–S5 × 预算、Hill D、锚点占比、缺口），原始录像可一键生成 GIF 预览。
+- **模型设置**：选服务商、填模型名和 API key。key 只写进 `~/.config/embodigen/llm.toml`（权限 600），不会回显到页面，也不进日志和命令行；没配好时带 `llm` 的任务直接拒绝，不会开跑。
+- **任务面板**：一次只跑一个任务，显示每一步命令和实时日志。「停止」相当于按 Ctrl+C；下载中途停止会保留 `.part`，下次断点续传。
+
+只监听 127.0.0.1，所有接口都要启动时打印的令牌，别的网页和本机其他用户都调不动它。程序跑在远程服务器上时，在自己电脑上执行 `ssh -L 8765:127.0.0.1:8765 <服务器>`，再在本地浏览器打开那个链接。控制台本身也只用标准库，零依赖。
 
 ## 虚拟世界管线（GameScaling）
 
@@ -188,7 +211,7 @@ note: pool too small for S1@0.08h: those runs are smaller than their budget (sha
   <img src="docs/assets/screens/worlds.jpg" width="860" alt="展示页：S1–S5 配比在最大预算档的锚点占比与 Hill D；在真实录像上注入时延后的对齐校验结果" />
 </p>
 
-三个适配器都按公开数据的真实文件写成并验证过：字段名、编码和怪癖都取自下载下来的样本，没有靠猜。`make samples` 会下载这些样本（只取动作日志，约 88 MB；视频用 `--video` 另取），全程跑一遍：
+三个适配器都按公开数据的真实文件写成并验证过：字段名、编码和怪癖都取自下载下来的样本，没有靠猜。`make samples` 会下载这些样本（只取动作日志，约 88 MB；视频用 `--video` 另取），全程跑一遍。下载显示进度，中断后再跑会断点续传；Hugging Face 访问慢时加镜像：`embodigen fetch --video --hf-endpoint https://hf-mirror.com`（或设置 `HF_ENDPOINT`）。
 
 | 数据源 | 原始格式 | 适配器处理了什么 |
 |---|---|---|
@@ -452,11 +475,13 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen backends` | 列出已注册的后端与机器人本体 |
 | `embodigen worlds` | 列出已注册的虚拟世界 |
 | `embodigen rollout --world <a,b\|all> -n N [--profile player\|afk\|distracted] [--lag-ms X] [--drift-ms-per-min X]` | 让脚本玩家在世界里录制 N 条（后几个参数故意制造坏样本，用来验证闸门） |
+| `embodigen fetch [--video] [--hf-endpoint <镜像>]` | 下载真实公开样例（带进度、可断点续传） |
 | `embodigen ingest --source vpt\|d2e\|p2p --input <dir> [-j K]` | 把数据集录像转换成统一原始布局 |
 | `embodigen curate --raw <dir> --out <dir> [--no-realign]` | 对齐校验、动作规范化、闸门 |
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
+| `embodigen ui [--port 8765]` | 本地网页控制台：上面这些步骤都能在浏览器里点按钮完成，带实时日志和停止按钮 |
 | `embodigen preview --recording <dir> [--start 秒] [--max-frames N]` | 把一条录像画成带键鼠条的 GIF；数据集录像从视频里解码（需要 `[video]`），按原始采集比例还原画面 |
 
 常用参数：`--resolution`（默认 64）、`--fps`（8）、`--threshold`（12 mm）、`--attempts`（3）、`--drift`（首轮注入漂移，默认 25 mm，0 关闭）、`--seed`。
@@ -495,11 +520,12 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 112 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 120 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
 make samples    # 真实公开数据：下载 → ingest → curate → build（D2E 需要 Python 3.14+ 或 pip install -e '.[d2e]'）
+make ui         # 网页控制台（同 embodigen ui）
 make docs       # 从真实运行重建展示页素材（约 75 秒；虚拟世界部分读 make worlds / make samples 的账本）
 ```
 
