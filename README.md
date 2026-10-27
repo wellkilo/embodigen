@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-110_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-112_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -453,7 +453,7 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
-| `embodigen preview --recording <dir>` | 把一条录像画成带键鼠条的 GIF |
+| `embodigen preview --recording <dir> [--start 秒] [--max-frames N]` | 把一条录像画成带键鼠条的 GIF；数据集录像从视频里解码（需要 `[video]`），按原始采集比例还原画面 |
 
 常用参数：`--resolution`（默认 64）、`--fps`（8）、`--threshold`（12 mm）、`--attempts`（3）、`--drift`（首轮注入漂移，默认 25 mm，0 关闭）、`--seed`。
 
@@ -491,7 +491,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 110 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 112 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
@@ -507,7 +507,7 @@ make docs       # 从真实运行重建展示页素材（约 75 秒）
 - **验证器靠颜色分割**：换材质要改参考色，真实实现应换成关键点跟踪；它还借用了真值深度来排除背景像素。
 - **只有一个抓放模板**：移动与人形只验证了接口和动作空间。
 - **虚拟世界：默认用 mock 标注器**：`mock-rationale-v0` 用模板加引擎状态写 rationale，只用来验证密度、缓存和模板。云端模型后端 `llm` 已经实现，但还没在真实服务商上跑过，rationale 的质量要等提供 API key 后抽样检查。
-- **虚拟世界：视频只在对齐校验时解码**：帧以 `video.mkv#t=<秒>` 的形式引用，训练样本里也是这个引用，没有抽帧落盘。`preview --recording` 目前只支持 PNG 帧。没有镜头运动可对照的录像（俯视游戏）无法验证，会放行。D2E 数据集按游戏而不是按玩家组织，所以源流上限按游戏计；P2P 的鼠标滚轮只记方向。
+- **虚拟世界：视频只在需要时解码**：帧以 `video.mkv#t=<秒>` 的形式引用，训练样本里也是这个引用，没有抽帧落盘。只有对齐校验、预览和 llm 标注器会解码视频。D2E-480p 和 P2P 的 192×192 视频把 16:9 的画面压成了正方形；预览和标注器会按 `recording.json` 里的采集尺寸还原比例，但训练样本引用的仍是原视频，训练端需要自己处理宽高比。没有镜头运动可对照的录像（俯视游戏）无法验证，会放行。D2E 数据集按游戏而不是按玩家组织，所以源流上限按游戏计；P2P 的鼠标滚轮只记方向。
 - **虚拟世界：参考世界是 mock**：`mock-raycast-v0` 证明的是数据通路和闸门，画面不是真游戏。真引擎目前只有 ViZDoom。
 - **预算单位是个假设**：默认把预算算作唯一游戏画面的小时数（`budget_unit = "footage"`），重叠窗口不重复计。如果论文是按窗口累计算的，改成 `"window"` 即可。token 数没有统计。
 - **许可证待定**：`pyproject.toml` 里是 `TBD`，正式开源前需要补上 LICENSE。

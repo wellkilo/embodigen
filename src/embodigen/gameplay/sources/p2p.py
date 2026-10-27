@@ -136,12 +136,12 @@ class P2PSource:
         world = registry.label_for(title or "unknown")
 
         video = next((name for name in _VIDEOS if (path.parent / name).exists()), "")
-        width = height = 0
-        if video == "video.mp4":
-            specs = pw.parse(pw.first(meta_f, 10, b""))
-            window = pw.parse(pw.first(specs, 3, b""))
-            width, height = pw.first(window, 1, 0), pw.first(window, 2, 0)
-        elif video:
+        # Capture size, whichever video is linked: the 192x192 copy squeezes
+        # the 16:9 window, and previews/annotators restore the shape from this.
+        specs = pw.parse(pw.first(meta_f, 10, b""))
+        window = pw.parse(pw.first(specs, 3, b""))
+        width, height = pw.first(window, 1, 0), pw.first(window, 2, 0)
+        if not (width and height) and video:
             width = height = 192
 
         frames = [frame_action(raw) for raw in top.get(3, [])]

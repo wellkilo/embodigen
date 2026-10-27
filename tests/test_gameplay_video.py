@@ -88,6 +88,25 @@ class VideoAlignmentTest(unittest.TestCase):
         self.assertEqual(report.alignment["status"], "aligned", report.alignment)
         self.assertEqual(report.realigned_ms, 0.0)
 
+    def test_frames_decode_at_the_capture_aspect(self):
+        from embodigen.gameplay.video import PyAVFrames
+
+        rec, root = self.recs["clean"]
+        ref = rec.observations[10].frame
+        self.assertEqual(PyAVFrames().rgb(root, ref, 64)[:2], (64, 40))  # the video's own shape
+        w, h, px = PyAVFrames().rgb(root, ref, 64, aspect=2.0)  # e.g. 16:9 stored square
+        self.assertEqual((w, h, len(px)), (64, 32, 64 * 32 * 3))
+
+    def test_preview_renders_from_the_video(self):
+        from embodigen.gameplay.preview import render_recording
+
+        _, root = self.recs["clean"]
+        out, turns, w, h = render_recording(root, root / "p.gif", max_turns=6, start_s=2.0)
+        self.assertEqual(turns, 6)
+        self.assertTrue(out.read_bytes().startswith(b"GIF89a"))
+        with self.assertRaises(SystemExit):
+            render_recording(root, root / "late.gif", start_s=999.0)
+
     def test_lag_is_measured_from_decoded_video(self):
         report = gate(*self.recs["late"])
         self.assertTrue(report.passed, report.reasons)

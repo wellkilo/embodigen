@@ -13,6 +13,7 @@ reported as ``skipped``, exactly as before.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Protocol
 
@@ -75,16 +76,26 @@ class PyAVFrames:
                  band: tuple[float, float]) -> list[list[float]]:
         return [_frame_profile(f, columns, band) for f in self._decode(root, [o.frame for o in frames])]
 
-    def rgb(self, root: Path, frame: str, max_width: int) -> tuple[int, int, bytes]:
+    def rgb(self, root: Path, frame: str, max_width: int, aspect: float = 0.0) -> tuple[int, int, bytes]:
         """One referenced frame as packed RGB, downscaled to at most ``max_width``."""
-        (picked,) = self._decode(root, [frame])
-        w = min(max_width, picked.width)
-        h = max(2, round(picked.height * w / picked.width))
-        plane = picked.reformat(width=w, height=h, format="rgb24").planes[0]
-        raw = bytes(plane)
-        if plane.line_size != w * 3:
-            raw = b"".join(raw[y * plane.line_size : y * plane.line_size + w * 3] for y in range(h))
-        return w, h, raw
+        return self.rgbs(root, [frame], max_width, aspect)[0]
+
+    def rgbs(self, root: Path, frames: list[str], max_width: int,
+             aspect: float = 0.0) -> list[tuple[int, int, bytes]]:
+        """Referenced frames as packed RGB; one seek per run of frames from the same file.
+        ``aspect`` (width / height of the original capture) undoes datasets that
+        store a 16:9 game squeezed into a square video (D2E-480p, P2P 192x192)."""
+        out = []
+        for picked in self._decode(root, frames):
+            w = min(max_width, picked.width)
+            shape = aspect or picked.width / picked.height
+            h = max(2, round(w / shape))
+            plane = picked.reformat(width=w, height=h, format="rgb24").planes[0]
+            raw = bytes(plane)
+            if plane.line_size != w * 3:
+                raw = b"".join(raw[y * plane.line_size : y * plane.line_size + w * 3] for y in range(h))
+            out.append((w, h, raw))
+        return out
 
     def _decode(self, root: Path, refs: list[str]) -> list:
         """The decoded frame on screen at each reference time, in order."""
@@ -144,6 +155,16 @@ def _frame_profile(frame, columns: int, band: tuple[float, float]) -> list[float
     grey = frame.reformat(width=w, height=h, format="gray")
     plane = grey.planes[0]
     return pixels_profile(w, h, 1, bytes(plane), columns, band, stride=plane.line_size)
+
+
+def capture_aspect(root: Path) -> float:
+    """width / height of the original capture from recording.json (0 if unknown)."""
+    try:
+        meta = json.loads((Path(root) / "recording.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0.0
+    w, h = meta.get("width") or 0, meta.get("height") or 0
+    return w / h if w and h else 0.0
 
 
 def video_reader(name: str) -> tuple[FrameReader | None, str]:

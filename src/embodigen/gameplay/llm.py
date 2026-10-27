@@ -307,7 +307,9 @@ class LLMAnnotator:
                 self._video, why = video_reader("pyav")
                 if self._video is None:
                     raise LLMError(f"frame {ref} is inside a video: {why}; or set images = false")
-            w, h, rgb = self._video.rgb(Path(root), ref, self.cfg.image_width)
+            from embodigen.gameplay.video import capture_aspect
+
+            w, h, rgb = self._video.rgb(Path(root), ref, self.cfg.image_width, capture_aspect(Path(root)))
             blob = encode_png(w, h, rgb)
         return "data:image/png;base64," + base64.b64encode(blob).decode("ascii")
 
