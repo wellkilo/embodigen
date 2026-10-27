@@ -1,4 +1,4 @@
-.PHONY: install test demo batch preview docs worlds samples clean
+.PHONY: install test demo batch preview docs worlds samples ui clean
 
 install:
 	pip install -e .
@@ -32,12 +32,16 @@ worlds:
 # `make samples VIDEO=--video` also fetches the videos (~0.9 GB) so curate can
 # check alignment from pixels (needs `pip install -e '.[video]'`).
 samples:
-	python3 scripts/fetch_public_samples.py --out data/samples $(VIDEO)
+	PYTHONPATH=src python3 -m embodigen.cli fetch --out data/samples $(VIDEO)
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source vpt --input data/samples/vpt --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source d2e --input data/samples/d2e --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source p2p --input data/samples/p2p --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli curate --raw data/samples-raw --out data/samples-curated
 	PYTHONPATH=src python3 -m embodigen.cli build --curated data/samples-curated --study configs/studies/public-samples.toml --out data/samples-mixes
+
+# Local web console for every step above (prints a link with an access token).
+ui:
+	PYTHONPATH=src python3 -m embodigen.cli ui
 
 docs:
 	python3 scripts/build_docs_assets.py --out docs/assets

@@ -58,7 +58,8 @@ It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.
 | Convert VPT recordings | `embodigen ingest --source vpt --input <dir> --out data/raw` |
 | Convert D2E (OWAMcap) recordings | `embodigen ingest --source d2e --input <dir> --out data/raw` |
 | Convert Open-P2P recordings | `embodigen ingest --source p2p --input <dir> --out data/raw` |
-| Fetch real public samples | `python3 scripts/fetch_public_samples.py --out data/samples [--video]` |
+| Fetch real public samples | `embodigen fetch --out data/samples [--video] [--hf-endpoint https://hf-mirror.com]` (resumes; `scripts/fetch_public_samples.py` is the same) |
+| Run the steps from a browser | `embodigen ui` (127.0.0.1 only, token in the printed link; each job is a plain `embodigen ...` subprocess) |
 | Gate and canonicalise | `embodigen curate --raw data/raw --out data/curated` |
 | Build a mixture grid | `embodigen build --curated data/curated --study configs/studies/reference.toml --out data/mixes` |
 | Preview a recording | `embodigen preview --recording data/raw/<id>` |
@@ -77,4 +78,5 @@ It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.
 - Paper numbers in `configs/studies/gamescaling.toml` are marked `paper`; guesses are marked `unpublished`. Keep that distinction.
 - Adapters: field names and quirks come from real files of that dataset, not from its docs alone. Tests build synthetic fixtures in the same shape; never commit dataset files (D2E is CC BY-NC).
 - Model-backed annotators call cloud APIs (`gameplay/llm.py`, OpenAI-compatible, stdlib `urllib`). Never deploy models locally or use the host's GPUs for this. API keys come from the user (`embodigen llm setup` or the provider's env var) and never enter study files, ledgers, caches or logs; a run without a key must stop before doing work.
+- The web console (`embodigen/ui`) only builds `embodigen ...` command lines and runs them; pipeline logic stays in the CLI and `gameplay/`. It binds to 127.0.0.1, every API call needs the launch token, and an API key typed into it goes only to `write_user_config`, never back to the page or onto a command line.
 - Prefer small, reviewable diffs.
