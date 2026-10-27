@@ -90,7 +90,8 @@ def _cmd_preview(args: argparse.Namespace) -> int:
 
         root = Path(args.recording)
         out = Path(args.out) if args.out else root / "preview.gif"
-        path, frames, w, h = render_recording(root, out, max_turns=args.max_frames, scale=args.scale)
+        path, frames, w, h = render_recording(root, out, max_turns=args.max_frames, scale=args.scale,
+                                              start_s=args.start)
         print(f"wrote {path} — {frames} turns, {w}x{h}, {path.stat().st_size / 1024:.0f} KB")
         return 0
     if not args.episode:
@@ -384,6 +385,7 @@ def build_parser() -> argparse.ArgumentParser:
     pv.add_argument("--fps", type=float, default=8.0)
     pv.add_argument("--scale", type=int, default=0, help="integer upscale (default: ~160 px panels)")
     pv.add_argument("--max-frames", type=int, default=0, help="0 = all frames")
+    pv.add_argument("--start", type=float, default=0.0, help="recording only: first second to show")
     pv.set_defaults(func=_cmd_preview)
 
     ix = sub.add_parser("index", help="summarise every episode under an output directory")

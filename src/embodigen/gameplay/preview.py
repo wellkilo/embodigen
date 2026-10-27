@@ -5,6 +5,11 @@ them its depth and instance labels, with an input strip underneath -- a lit
 box for each held key and a bar for the mouse ``dx`` of the packet that
 follows the frame. Watching the bar lead or trail the view is the quickest
 way to eyeball an action/frame desync.
+
+Frames kept inside a video (dataset recordings: ``video.mkv#t=...``) are
+decoded through the ``video`` backend (``pip install -e '.[video]'``) and
+downscaled to ``VIDEO_WIDTH``; ``start_s`` picks where a long recording's
+preview begins.
 """
 
 from __future__ import annotations
@@ -15,8 +20,11 @@ from pathlib import Path
 from embodigen.gameplay.actions import Canonicalizer
 from embodigen.gameplay.recording import read_recording
 from embodigen.gifio import write_gif
+from embodigen.gameplay.video import capture_aspect, split_ref, video_reader
 from embodigen.pngio import read_png
 from embodigen.preview import depth_to_rgb, seg_to_rgb
+
+VIDEO_WIDTH = 320
 
 HUD_KEYS = ("w", "a", "s", "d", "space", "shift", "mouse_left", "mouse_right")
 _BG = (10, 12, 16)
@@ -52,37 +60,57 @@ def _rect(canvas: bytearray, cw: int, x0: int, y0: int, w: int, h: int, color: t
         canvas[dst : dst + w * 3] = line
 
 
-def render_recording(root: Path, out: Path, max_turns: int = 0, scale: int = 0, fps: float = 5.0) -> tuple[Path, int, int, int]:
+def render_recording(root: Path, out: Path, max_turns: int = 0, scale: int = 0, fps: float = 5.0,
+                     start_s: float = 0.0) -> tuple[Path, int, int, int]:
     root = Path(root)
     rec = read_recording(root)
     turns = Canonicalizer().turns(rec.events, rec.observations, rec.meta.duration, rec.meta.mouse_scale)
-    if not turns or not turns[0].frame.endswith(".png"):
-        raise SystemExit(f"{root}: preview needs decoded PNG frames")
+    turns = [t for t in turns if t.t >= start_s - 1e-9]
+    if not turns:
+        raise SystemExit(f"{root}: no turns at or after {start_s:g}s (recording is {rec.meta.duration:.1f}s)")
+    count = len(turns) if max_turns <= 0 else min(len(turns), max_turns)
+    turns = turns[:count]
     by_frame = {o.frame: o for o in rec.observations}
-    w, h, _, _ = read_png(root / turns[0].frame)
+
+    if turns[0].frame.endswith(".png"):
+        pixels = None
+        w, h, _, _ = read_png(root / turns[0].frame)
+    elif split_ref(turns[0].frame)[1] is not None:
+        reader, why = video_reader("pyav")
+        if reader is None:
+            raise SystemExit(f"{root}: frames are inside a video and {why}")
+        if not (root / split_ref(turns[0].frame)[0]).exists():
+            raise SystemExit(f"{root}: video {split_ref(turns[0].frame)[0]} is missing (fetch it with --video)")
+        decoded = reader.rgbs(root, [t.frame for t in turns], VIDEO_WIDTH, capture_aspect(root))
+        pixels = {t.frame: px for t, (_, _, px) in zip(turns, decoded)}
+        w, h = decoded[0][0], decoded[0][1]
+    else:
+        raise SystemExit(f"{root}: preview needs PNG frames or video references")
     k = scale or max(1, round(240 / w))
     pw, ph = w * k, h * k
-    first = by_frame[turns[0].frame]
-    channels = 1 + (first.depth is not None) + (first.labels is not None)
+    first = by_frame.get(turns[0].frame)
+    channels = 1 + (first is not None and first.depth is not None) + (first is not None and first.labels is not None)
     gap = max(2, k)
     hud_h = 10 * k
     cw = pw * channels + gap * (channels - 1)
     ch = ph + gap + hud_h
 
-    count = len(turns) if max_turns <= 0 else min(len(turns), max_turns)
     frames: list[bytes] = []
-    for turn in turns[:count]:
+    for turn in turns:
         canvas = bytearray(bytes(_BG) * (cw * ch))
-        fw, fh, c, px = read_png(root / turn.frame)
-        if c != 3:
-            px = bytes(b for i in range(fw * fh) for b in (px[i * c : i * c + 3] if c >= 3 else px[i : i + 1] * 3))
+        if pixels is not None:
+            px = pixels[turn.frame]
+        else:
+            fw, fh, c, px = read_png(root / turn.frame)
+            if c != 3:
+                px = bytes(b for i in range(fw * fh) for b in (px[i * c : i * c + 3] if c >= 3 else px[i : i + 1] * 3))
         panels = [px]
-        obs = by_frame[turn.frame]
-        if obs.depth:
+        obs = by_frame.get(turn.frame)
+        if obs is not None and obs.depth:
             depth = list(struct.unpack(f"<{w * h}f", (root / obs.depth).read_bytes()))
             valid = [d for d in depth if d > 0]
             panels.append(depth_to_rgb(depth, min(valid, default=0.1), max(valid, default=1.0) + 1e-6))
-        if obs.labels:
+        if obs is not None and obs.labels:
             panels.append(seg_to_rgb(list(struct.unpack(f"<{w * h}H", (root / obs.labels).read_bytes()))))
         for i, panel in enumerate(panels[:channels]):
             _blit(canvas, cw, _scale(panel, w, h, k), pw, ph, i * (pw + gap), 0)

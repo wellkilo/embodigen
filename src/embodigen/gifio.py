@@ -111,6 +111,13 @@ def quantize(frames: list[bytes], width: int, height: int):
         cached = lookup.get(color)
         if cached is not None:
             return cached
+        # Real footage has far more distinct colours than the flat-shaded
+        # renders: search once per 5-bit bin so the cost stays bounded.
+        binned = (color[0] | 7, color[1] | 7, color[2] | 7, -1)
+        cached = lookup.get(binned)  # type: ignore[arg-type]
+        if cached is not None:
+            lookup[color] = cached
+            return cached
         best, best_d = 0, 1 << 30
         for idx, pal in enumerate(palette):
             d = (
@@ -121,6 +128,7 @@ def quantize(frames: list[bytes], width: int, height: int):
             if d < best_d:
                 best, best_d = idx, d
         lookup[color] = best
+        lookup[binned] = best  # type: ignore[index]
         return best
 
     indexed = []
