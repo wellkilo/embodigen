@@ -137,6 +137,33 @@ class ConsoleTest(unittest.TestCase):
         self.assertIn(self.call("/files/%2e%2e/%2e%2e/etc/passwd")[0], (400, 404))
         self.assertEqual(self.call("/files/data/raw/raycast-arena-0000/recording.json")[0], 404)
 
+    def test_robot_episodes_open_with_their_files_as_written(self):
+        _, job = self.call("/api/run", {"action": "gen", "params": {"task": "把红色方块放进盒子", "resolution": "64",
+                                                                      "out": "out"}})
+        job = self.wait(job["id"], timeout=120)
+        self.assertEqual(job["status"], "ok", job["lines"])
+        _, ds = self.call("/api/datasets")
+        self.assertEqual(ds["robot"], [{"path": "out", "episodes": 1, "rejected": 0}])
+        _, robot = self.call("/api/robot?path=out")
+        ep = robot["episodes"][0]
+        self.assertEqual(ep["path"], "out/episodes/franka-0000")
+        self.assertEqual(robot["index_text"], (self.tmp / "out" / "index.json").read_text(encoding="utf-8"))
+        _, tree = self.call(f"/api/tree?path={ep['path']}")
+        names = {f["name"] for f in tree["files"]}
+        self.assertTrue({"meta/info.json", "meta/fidelity.json", "frames/depth/000.f32", "frames/seg/000.u16"} <= names)
+        data = next(f for f in tree["files"] if f["name"].endswith(".jsonl"))
+        _, text = self.call(f"/api/text?path={data['path']}")
+        self.assertEqual(text["kind"], "text")
+        self.assertEqual(text["text"], (self.tmp / data["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(text["lines"], ep["frames"])
+        _, binary = self.call(f"/api/text?path={ep['path']}/frames/seg/000.u16")
+        self.assertEqual(binary["kind"], "binary")
+        self.assertEqual(binary["bytes"], 64 * 64 * 2)
+        self.assertTrue(binary["hex"].startswith("00000000  "))
+        with urllib.request.urlopen(f"{self.base}/files/{ep['path']}/frames/depth/000.f32?t=t0k", timeout=10) as r:
+            self.assertEqual(len(r.read()), 64 * 64 * 4)
+        self.assertEqual(self.call("/api/text?path=../outside.json")[0], 400)
+
     def test_one_job_at_a_time_and_stop_ends_it(self):
         runner = self.srv.runner
         job = runner.start("sleep", "sleep", [[sys.executable, "-c", "import time; print('up', flush=True); time.sleep(60)"],

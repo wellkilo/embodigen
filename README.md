@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-120_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-121_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -100,7 +100,7 @@ embodigen ui            # 打印 http://127.0.0.1:8765/#token=…，用浏览器
 
 - **快速开始**：「参考世界」「公开样例」各一个按钮，等价于 `make worlds` / `make samples`，可勾选下载视频、填 Hugging Face 镜像、选理由标注器。
 - **分步操作**：下载、录制、导入、筛选、构建，表单下方实时显示将要执行的 `embodigen …` 命令，照抄到终端效果相同。
-- **数据与结果**：扫描 `data/`、`out/`，点开就能看筛选账本（每条录像的对齐与拒绝理由）、训练集网格（S1–S5 × 预算、Hill D、锚点占比、缺口），原始录像可一键生成 GIF 预览。
+- **数据与结果**：扫描 `data/`、`out/`，点开就能看筛选账本（每条录像的对齐与拒绝理由）、训练集网格（S1–S5 × 预算、Hill D、锚点占比、缺口），原始录像可一键生成 GIF 预览。机器人数据（`out/`）列出 `index.json` 里的每个回合，点开后逐帧播放白模、写实、深度（`.f32`）、分割（`.u16`）四个通道，并能按目录浏览每个文件的原始内容：JSON / JSONL 原样显示，二进制帧显示十六进制。
 - **模型设置**：选服务商、填模型名和 API key。key 只写进 `~/.config/embodigen/llm.toml`（权限 600），不会回显到页面，也不进日志和命令行；没配好时带 `llm` 的任务直接拒绝，不会开跑。
 - **任务面板**：一次只跑一个任务，显示每一步命令和实时日志。「停止」相当于按 Ctrl+C；下载中途停止会保留 `.part`，下次断点续传。
 
@@ -520,7 +520,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 120 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 121 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）

@@ -46,7 +46,11 @@ STATIC = Path(__file__).with_name("static")
 PKG_PARENT = Path(embodigen.__file__).resolve().parents[1]  # puts `embodigen` on the jobs' path
 MAX_LINES = 4000
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
-MEDIA = {".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".mp4": "video/mp4"}
+MEDIA = {".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".mp4": "video/mp4",
+         # robot episode buffers (little-endian float32 depth, uint16 ids, packed RGB), drawn by the page
+         ".f32": "application/octet-stream", ".u16": "application/octet-stream", ".rgb": "application/octet-stream"}
+TEXT = {".json", ".jsonl", ".txt", ".md", ".toml", ".csv", ".yaml", ".yml", ".log"}
+TEXT_BYTES = 256 * 1024  # shown as is; longer files are cut, with the total size reported
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
 SOURCES = ("vpt", "d2e", "p2p")
@@ -307,7 +311,8 @@ class Workspace:
                 continue
             if (d / "index.json").exists() and (d / "episodes").is_dir():
                 n = sum(1 for _ in (d / "episodes").iterdir())
-                found["robot"].append({"path": self.rel(d), "episodes": n})
+                bad = sum(1 for _ in (d / "rejected").iterdir()) if (d / "rejected").is_dir() else 0
+                found["robot"].append({"path": self.rel(d), "episodes": n, "rejected": bad})
                 continue
             recs = sum(1 for c in children if os.path.exists(os.path.join(c.path, "recording.json")))
             if recs:
@@ -359,6 +364,57 @@ class Workspace:
                              "reasons": r.get("reasons", []), "alignment": r.get("alignment", {}).get("status", ""),
                              "realigned_ms": r.get("realigned_ms", 0)})
             out["recordings"] = rows
+        return out
+
+
+    def robot(self, rel: str) -> dict[str, Any]:
+        """A robot output directory: its index.json as written, plus where each episode lives."""
+        base = self.inside(rel)
+        index = base / "index.json"
+        if not index.exists():
+            raise BadRequest(f"{rel} 下没有 index.json")
+        text = index.read_text(encoding="utf-8")
+        data = json.loads(text)
+        episodes = []
+        for row in data.get("episodes", []):
+            eid = str(row.get("episode_id", ""))
+            home = next((base / b / eid for b in ("episodes", "rejected") if (base / b / eid).is_dir()), None)
+            episodes.append({**row, "path": self.rel(home) if home else ""})
+        return {"path": self.rel(base), "index": {k: v for k, v in data.items() if k != "episodes"},
+                "episodes": episodes, "index_file": self.rel(index), "index_text": text}
+
+    def tree(self, rel: str) -> dict[str, Any]:
+        """Every file under a directory (an episode), with sizes."""
+        base = self.inside(rel)
+        if not base.is_dir():
+            raise BadRequest(f"{rel} 不是目录")
+        files = []
+        for path in sorted(base.rglob("*")):
+            if path.is_file():
+                files.append({"path": self.rel(path), "name": path.relative_to(base).as_posix(), "bytes": path.stat().st_size})
+                if len(files) >= 5000:
+                    break
+        return {"path": self.rel(base), "files": files}
+
+    def text(self, rel: str) -> dict[str, Any]:
+        """A file's own bytes: text as written (cut at TEXT_BYTES), binary as a hex dump of its head."""
+        path = self.inside(rel)
+        if not path.is_file():
+            raise BadRequest(f"{rel} 不是文件")
+        size = path.stat().st_size
+        with path.open("rb") as fh:
+            head = fh.read(TEXT_BYTES if path.suffix.lower() in TEXT else 512)
+        out: dict[str, Any] = {"path": self.rel(path), "bytes": size, "truncated": size > len(head)}
+        if path.suffix.lower() in TEXT:
+            out["kind"] = "text"
+            out["text"] = head.decode("utf-8", errors="replace")
+            if path.suffix.lower() == ".jsonl" and not out["truncated"]:
+                out["lines"] = out["text"].count("\n")
+            return out
+        out["kind"] = "binary"
+        out["hex"] = "\n".join(
+            f"{i:08x}  {head[i:i + 16].hex(' '):<47}  {''.join(chr(b) if 32 <= b < 127 else '.' for b in head[i:i + 16])}"
+            for i in range(0, len(head), 16))
         return out
 
 
@@ -658,6 +714,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(ws.recordings(arg("dir")))
         if path == "/api/ledger":
             return self._json(ws.ledger(arg("path")))
+        if path == "/api/robot":
+            return self._json(ws.robot(arg("path")))
+        if path == "/api/tree":
+            return self._json(ws.tree(arg("path")))
+        if path == "/api/text":
+            return self._json(ws.text(arg("path")))
         if path.startswith("/api/jobs/"):
             job = runner.jobs.get(path.rsplit("/", 1)[-1])
             if not job:

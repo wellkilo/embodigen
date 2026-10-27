@@ -226,7 +226,7 @@
         $("form[data-action=ingest] [name=source]").value = r.source;
         planFor($("form[data-action=ingest]"));
       }),
-      group("机器人数据", ds.robot, (r) => `${r.episodes} 个回合`, () => toast("用 embodigen index / validate 查看", "info")),
+      group("机器人数据", ds.robot, (r) => `${r.episodes} 个通过的回合` + (r.rejected ? ` · ${r.rejected} 个被拒` : ""), (r) => openRobot(r.path)),
     ].filter(Boolean));
   }
   $("#rescan").addEventListener("click", loadDatasets);
@@ -234,10 +234,11 @@
   const pct = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
   const ALIGN = { aligned: "对齐", inconclusive: "无法验证", skipped: "跳过", drift: "漂移", misaligned: "错位", "": "-" };
 
-  function table(head, rows) {
+  function table(head, rows, onRow) {
     return el("div", { class: "tbl" }, el("table", {},
       el("thead", {}, el("tr", {}, head.map((h) => el("th", {}, h)))),
-      el("tbody", {}, rows.map((r) => el("tr", {}, r.map((c) => (c && c.nodeType ? el("td", {}, c) : el("td", {}, c))))))));
+      el("tbody", {}, rows.map((r, i) => el("tr", onRow ? { class: "click", tabindex: "0", onclick: () => onRow(i),
+        onkeydown: (e) => { if (e.key === "Enter") onRow(i); } } : {}, r.map((c) => el("td", {}, c)))))));
   }
 
   async function openLedger(path) {
@@ -281,7 +282,7 @@
     }
     box.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  const kpi = (v, label) => el("div", { class: "kpi" }, el("b", {}, v), el("span", {}, label));
+  const kpi = (v, label, cls) => el("div", { class: "kpi" }, el("b", cls ? { class: cls } : {}, v), el("span", {}, label));
   const chk = (ok, label) => el("span", { class: ok ? "ok" : "bad" }, `${ok ? "✓" : "✗"} ${label}`);
   function bar(x) {
     const fill = el("i");
@@ -315,6 +316,162 @@
       const job = await api("/api/run", { action: "preview", params: { recording: x.path } });
       follow(job.id, true);
     } catch (e) { toast(e.message); }
+  }
+
+  /* ------------------------------------------------------------------ robot episodes */
+  const fmtBytes = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} KB` : `${n} B`);
+  const getText = (rel) => api(`/api/text?path=${encodeURIComponent(rel)}`);
+
+  async function openRobot(dir) {
+    let r;
+    try { r = await api(`/api/robot?path=${encodeURIComponent(dir)}`); } catch (e) { toast(e.message); return; }
+    const s = r.index.summary || {};
+    const view = el("div", { class: "episode" });
+    $("#detail").replaceChildren(
+      el("h2", {}, `机器人数据 · ${r.path}`),
+      el("div", { class: "kpis" },
+        kpi(`${s.certified}/${s.total}`, "通过保真度闸门"), kpi(pct(s.yield || 0), "良率"),
+        kpi(`${r.index.threshold_mm} mm`, "闸门阈值"), kpi(r.index.config_hash || "-", "配置哈希", "mono")),
+      el("p", { class: "hint" }, "点一行查看回合：逐帧画面、深度、分割，以及每个文件的原始内容。"),
+      table(["回合", "任务", "机器人", "帧", "p95 mm", "max mm", "尝试", "结论"], r.episodes.map((x) => [
+        el("span", { class: "mono" }, x.episode_id), x.instruction, x.robot, x.frames, x.p95_error_mm.toFixed(2),
+        x.max_error_mm.toFixed(2), x.attempts, x.passed ? el("span", { class: "ok" }, "通过") : el("span", { class: "bad" }, "拒绝")]),
+        (i) => r.episodes[i].path ? openEpisode(r.episodes[i], view) : toast("找不到这个回合的目录")),
+      el("details", { class: "raw" }, el("summary", {}, `${r.index_file} 原文`), el("pre", { class: "src" }, r.index_text)),
+      view
+    );
+    $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function openEpisode(ep, view) {
+    let tree, info, rows, fid, scene;
+    try {
+      tree = await api(`/api/tree?path=${encodeURIComponent(ep.path)}`);
+      const has = (n) => tree.files.find((f) => f.name === n);
+      const dataFile = tree.files.find((f) => /^data\/.*\.jsonl$/.test(f.name));
+      [info, rows, fid, scene] = await Promise.all([
+        has("meta/info.json") ? getText(has("meta/info.json").path).then((t) => JSON.parse(t.text)) : {},
+        dataFile ? getText(dataFile.path) : { text: "" },
+        has("meta/fidelity.json") ? getText(has("meta/fidelity.json").path).then((t) => JSON.parse(t.text)) : {},
+        has("meta/scene.json") ? getText(has("meta/scene.json").path).then((t) => JSON.parse(t.text)) : {},
+      ]);
+    } catch (e) { toast(e.message); return; }
+    const lines = rows.text.split("\n").filter((l) => l.trim());
+    const frames = lines.map((l) => JSON.parse(l));
+    const [h, w] = ((info.features || {})["observation.depth"] || {}).shape || [0, 0];
+    const fps = info.fps || 8;
+    const far = 0.999 * (((scene.camera || {}).far) || Infinity);  // rays that hit nothing read the far plane
+    const base = ep.path;
+
+    /* frame player: the four channels the pack writes, from the files themselves */
+    const imgW = el("img", { alt: "white model" }), imgP = el("img", { alt: "photoreal" });
+    const cvD = el("canvas", { width: w, height: h }), cvS = el("canvas", { width: w, height: h });
+    const panel = (node, label, note) => el("figure", { class: "chan" }, node, el("figcaption", {}, el("b", {}, label), " ", note));
+    const slider = el("input", { type: "range", min: 0, max: Math.max(frames.length - 1, 0), value: 0, "aria-label": "帧" });
+    const play = el("button", { class: "ghost small" }, "播放");
+    const meta = el("div", { class: "frame-meta" });
+    const line = el("pre", { class: "src one" });
+    let timer = null;
+    const cache = new Map();
+    async function buf(rel) {
+      if (!cache.has(rel)) cache.set(rel, fetch(fileUrl(rel)).then((r) => r.arrayBuffer()));
+      return cache.get(rel);
+    }
+    function paint(cv, n, color) {
+      const ctx = cv.getContext("2d"), img = ctx.createImageData(w, h);
+      for (let i = 0; i < w * h; i++) img.data.set([...color(i), 255], i * 4);
+      ctx.putImageData(img, 0, 0);
+    }
+    async function show(i) {
+      const f = frames[i];
+      if (!f) return;
+      slider.value = i;
+      const at = (k) => `${base}/${f.frames[k]}`;
+      imgW.src = fileUrl(at("white_model"));
+      imgP.src = fileUrl(at("photoreal"));
+      const [d, sg] = await Promise.all([buf(at("depth")), buf(at("segmentation"))]);
+      if (+slider.value !== i) return;
+      const dv = new DataView(d), sv = new DataView(sg);
+      let lo = Infinity, hi = -Infinity;
+      for (let k = 0; k < w * h; k++) {
+        const z = dv.getFloat32(k * 4, true);
+        if (Number.isFinite(z) && z > 0 && z < far) { lo = Math.min(lo, z); hi = Math.max(hi, z); }
+      }
+      paint(cvD, w * h, (k) => {
+        const z = dv.getFloat32(k * 4, true);
+        if (!(z > 0 && z < far)) return [5, 19, 23];
+        const t = 1 - (z - lo) / Math.max(hi - lo, 1e-6);
+        return [15 + 200 * t * t, 40 + 177 * t, 50 + 160 * t];
+      });
+      paint(cvS, w * h, (k) => {
+        const id = sv.getUint16(k * 2, true);
+        if (!id) return [5, 19, 23];
+        const x = Math.imul(id, 2654435761) >>> 0;
+        return [64 + (x & 191), 64 + ((x >> 8) & 191), 64 + ((x >> 16) & 191)];
+      });
+      const err = (fid.per_frame_mm || [])[i];
+      meta.replaceChildren(
+        el("b", {}, `第 ${i + 1}/${frames.length} 帧`), ` · t = ${f.timestamp}s · 阶段 ${f.phase}`,
+        err != null ? el("span", { class: err <= (fid.threshold_mm || 12) ? "ok" : "bad" }, ` · 误差 ${err.toFixed(2)} mm`) : "",
+        ` · 深度 ${lo === Infinity ? "-" : `${lo.toFixed(2)}–${hi.toFixed(2)} m`}`);
+      line.textContent = lines[i];
+    }
+    slider.addEventListener("input", () => show(+slider.value));
+    play.addEventListener("click", () => {
+      if (timer) { clearInterval(timer); timer = null; play.textContent = "播放"; return; }
+      play.textContent = "暂停";
+      timer = setInterval(() => {
+        if (!view.isConnected) { clearInterval(timer); return; }
+        show((+slider.value + 1) % frames.length);
+      }, 1000 / fps);
+    });
+
+    /* file browser: every file under the episode, shown as written */
+    const viewer = el("div", { class: "viewer" }, el("p", { class: "hint" }, "选一个文件查看原始内容。"));
+    async function openFile(f) {
+      $$(".files .on", view).forEach((n) => n.classList.remove("on"));
+      const btn = $(`.files [data-path="${CSS.escape(f.path)}"]`, view);
+      if (btn) btn.classList.add("on");
+      let t;
+      try { t = await getText(f.path); } catch (e) { toast(e.message); return; }
+      const head = el("p", { class: "hint" }, `${t.path} · ${fmtBytes(t.bytes)}` +
+        (t.kind === "binary" ? ` · 二进制，下面是前 ${Math.min(512, t.bytes)} 字节的十六进制` : "") +
+        (t.lines != null ? ` · ${t.lines} 行` : "") + (t.truncated && t.kind === "text" ? " · 只显示前 256 KB" : ""));
+      const kids = [head];
+      if (/\.(png|gif|jpe?g)$/i.test(f.name)) kids.push(el("img", { class: "pix", src: fileUrl(f.path), alt: f.name }));
+      kids.push(el("pre", { class: t.kind === "text" ? "src" : "src hex" }, t.kind === "text" ? t.text : t.hex));
+      viewer.replaceChildren(...kids);
+    }
+    const groups = new Map();
+    for (const f of tree.files) {
+      const dir = f.name.includes("/") ? f.name.slice(0, f.name.lastIndexOf("/")) : ".";
+      if (!groups.has(dir)) groups.set(dir, []);
+      groups.get(dir).push(f);
+    }
+    const fileBtn = (f) => el("button", { class: "file", "data-path": f.path, onclick: () => openFile(f) },
+      el("span", {}, f.name.split("/").pop()), el("small", {}, fmtBytes(f.bytes)));
+    const files = el("div", { class: "files" }, [...groups].map(([dir, fs]) => {
+      const total = fs.reduce((a, f) => a + f.bytes, 0);
+      return el("details", { open: fs.length <= 8 }, el("summary", {}, `${dir}/`, el("small", {}, ` ${fs.length} 个 · ${fmtBytes(total)}`)),
+        el("div", { class: "file-list" }, fs.map(fileBtn)));
+    }));
+
+    view.replaceChildren(
+      el("h3", {}, `${ep.episode_id} · ${ep.instruction}`),
+      frames.length && w ? el("div", { class: "player" },
+        el("div", { class: "chans" },
+          panel(imgW, "白模", "frames/white/*.png"), panel(imgP, "写实", "frames/photoreal/*.png"),
+          panel(cvD, "深度", "frames/depth/*.f32"), panel(cvS, "分割", "frames/seg/*.u16")),
+        el("div", { class: "scrub" }, play, slider), meta,
+        el("p", { class: "hint" }, "这一帧在 data/…/episode_*.jsonl 里的原始一行："), line) :
+        el("p", { class: "hint" }, "这个回合没有逐帧数据。"),
+      el("h3", {}, "文件"),
+      el("div", { class: "browser" }, files, viewer)
+    );
+    if (frames.length && w) show(0);
+    const first = tree.files.find((f) => f.name === "meta/fidelity.json") || tree.files[0];
+    if (first) openFile(first);
+    view.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   /* ------------------------------------------------------------------ model */
