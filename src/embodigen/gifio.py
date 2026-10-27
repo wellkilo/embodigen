@@ -98,13 +98,13 @@ def median_cut(pixels: list[tuple[int, int, int]], max_colors: int = 256):
     return palette
 
 
-def quantize(frames: list[bytes], width: int, height: int):
+def quantize(frames: list[bytes], width: int, height: int, max_colors: int = 256):
     """Build one palette over all frames and map each frame to indices."""
     sample: list[tuple[int, int, int]] = []
     for rgb in frames:
         for i in range(0, len(rgb), 3 * 7):  # sample every 7th pixel
             sample.append((rgb[i], rgb[i + 1], rgb[i + 2]))
-    palette = median_cut(sample, 256)
+    palette = median_cut(sample, max_colors)
     lookup = {color: i for i, color in enumerate(palette)}
 
     def nearest(color: tuple[int, int, int]) -> int:
@@ -141,12 +141,45 @@ def quantize(frames: list[bytes], width: int, height: int):
 
 
 def write_gif(path: str | Path, frames: list[bytes], width: int, height: int, delay_cs: int) -> None:
-    palette, indexed = quantize(frames, width, height)
+    """Frames after the first store only the rectangle that changed, with
+    unchanged pixels transparent, and identical frames just extend the
+    previous delay: page recordings and mostly-static previews shrink a lot
+    and look the same."""
+    palette, indexed = quantize(frames, width, height, max_colors=255)
+    clear = len(palette)  # reserved transparent index
+    palette.append((0, 0, 0))
     # GIF colour tables must be a power of two, at least 2 entries.
     bits = max(1, (len(palette) - 1).bit_length())
     size = 1 << bits
     while len(palette) < size:
         palette.append((0, 0, 0))
+    min_code = max(2, bits)
+
+    # (left, top, w, h, indices, delay) per stored frame
+    stored: list[list] = [[0, 0, width, height, indexed[0], delay_cs]]
+    shown = indexed[0]
+    for buf in indexed[1:]:
+        rows = [y for y in range(height) if buf[y * width : (y + 1) * width] != shown[y * width : (y + 1) * width]]
+        if not rows:
+            stored[-1][5] += delay_cs
+            continue
+        top, bottom = rows[0], rows[-1] + 1
+        left, right = width, 0
+        for y in range(top, bottom):
+            a, b = buf[y * width : (y + 1) * width], shown[y * width : (y + 1) * width]
+            if a == b:
+                continue
+            lo = next(x for x in range(width) if a[x] != b[x])
+            hi = next(x for x in range(width - 1, -1, -1) if a[x] != b[x]) + 1
+            left, right = min(left, lo), max(right, hi)
+        w, h = right - left, bottom - top
+        patch = bytearray(w * h)
+        for y in range(h):
+            a = buf[(top + y) * width + left : (top + y) * width + right]
+            b = shown[(top + y) * width + left : (top + y) * width + right]
+            patch[y * w : (y + 1) * w] = bytes(clear if a[x] == b[x] else a[x] for x in range(w))
+        stored.append([left, top, w, h, bytes(patch), delay_cs])
+        shown = buf
 
     out = bytearray(b"GIF89a")
     out += width.to_bytes(2, "little") + height.to_bytes(2, "little")
@@ -157,15 +190,16 @@ def write_gif(path: str | Path, frames: list[bytes], width: int, height: int, de
     # Loop forever.
     out += b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00\x00"
 
-    for buf in indexed:
-        out += b"\x21\xF9\x04\x04" + delay_cs.to_bytes(2, "little") + b"\x00\x00"
-        out += b"\x2C\x00\x00\x00\x00"
-        out += width.to_bytes(2, "little") + height.to_bytes(2, "little") + b"\x00"
-        min_code = max(2, bits)
+    for i, (left, top, w, h, buf, delay) in enumerate(stored):
+        # disposal 1 (keep), transparency on for the delta frames
+        flags = 0x04 | (1 if i else 0)
+        out += bytes([0x21, 0xF9, 0x04, flags]) + min(delay, 0xFFFF).to_bytes(2, "little") + bytes([clear if i else 0, 0])
+        out += b"\x2C" + left.to_bytes(2, "little") + top.to_bytes(2, "little")
+        out += w.to_bytes(2, "little") + h.to_bytes(2, "little") + b"\x00"
         out.append(min_code)
         data = lzw_encode(buf, min_code)
-        for i in range(0, len(data), 255):
-            chunk = data[i : i + 255]
+        for j in range(0, len(data), 255):
+            chunk = data[j : j + 255]
             out.append(len(chunk))
             out += chunk
         out.append(0)

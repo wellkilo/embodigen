@@ -188,6 +188,7 @@
 
     /* ---------- scene at a fractional frame ---------- */
     function sample(f) {
+      f = Number.isFinite(f) ? Math.max(0, f) : 0; // the first tick can arrive before the clock starts
       const i = Math.min(N - 1, Math.floor(f));
       const j = Math.min(N - 1, i + 1);
       const s = f - i;
@@ -258,11 +259,11 @@
         g.addColorStop(0, "rgba(196,62,104,0.35)");
         g.addColorStop(1, "rgba(24,22,60,0)");
       } else if (st.mode === "seg") {
-        g.addColorStop(0, "rgba(70,78,100,0.5)");
-        g.addColorStop(1, "rgba(46,52,68,0)");
+        g.addColorStop(0, "rgba(40,82,88,0.5)");
+        g.addColorStop(1, "rgba(20,46,52,0)");
       } else {
         g.addColorStop(0, st.mode === "clay" ? "rgba(150,156,166,0.28)" : "rgba(140,112,86,0.26)");
-        g.addColorStop(1, "rgba(20,22,28,0)");
+        g.addColorStop(1, "rgba(6,22,26,0)");
       }
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -336,7 +337,7 @@
       ctx.lineJoin = "round";
       // Full planned path, dim and dashed.
       ctx.setLineDash([3, 5]);
-      ctx.strokeStyle = "rgba(143,182,255,0.28)";
+      ctx.strokeStyle = "rgba(142,233,228,0.28)";
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
@@ -345,9 +346,9 @@
       // Travelled part, glowing.
       const head = project(S.eef);
       ctx.save();
-      ctx.shadowColor = "rgba(47,123,255,0.9)";
+      ctx.shadowColor = "rgba(15,217,210,0.9)";
       ctx.shadowBlur = 14;
-      ctx.strokeStyle = "rgba(120,170,255,0.95)";
+      ctx.strokeStyle = "rgba(90,226,220,0.95)";
       ctx.lineWidth = 2.2;
       ctx.beginPath();
       for (let k = 0; k <= cut; k++) (k ? ctx.lineTo(pts[k][0], pts[k][1]) : ctx.moveTo(pts[k][0], pts[k][1]));
@@ -360,7 +361,7 @@
       for (const p of phases) {
         const [x, y] = pts[p.start];
         const active = S.phase === p.name;
-        ctx.fillStyle = active ? "#8fb6ff" : "rgba(143,182,255,0.45)";
+        ctx.fillStyle = active ? "#8ee9e4" : "rgba(142,233,228,0.45)";
         ctx.beginPath();
         ctx.arc(x, y, active ? 3.2 : 2.2, 0, Math.PI * 2);
         ctx.fill();
@@ -368,16 +369,16 @@
 
       // End-effector head.
       const pulse = 6 + Math.sin(performance.now() / 260) * 2;
-      ctx.strokeStyle = "rgba(143,182,255,0.55)";
+      ctx.strokeStyle = "rgba(142,233,228,0.55)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(head[0], head[1], pulse + 4, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = "#e9f0ff";
+      ctx.fillStyle = "#effcfb";
       ctx.beginPath();
       ctx.arc(head[0], head[1], 3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "rgba(233,240,255,0.85)";
+      ctx.fillStyle = "rgba(239,252,251,0.85)";
       ctx.fillText(`EEF  z ${S.eef[2].toFixed(3)} m`, head[0] + 14, head[1] - 10);
     }
 
@@ -400,13 +401,13 @@
       const t = project(E.camera.target);
       if (p[2] > 0.03 && t[2] > 0.03) {
         ctx.setLineDash([2, 6]);
-        ctx.strokeStyle = "rgba(23,201,168,0.3)";
+        ctx.strokeStyle = "rgba(122,189,106,0.3)";
         ctx.beginPath();
         ctx.moveTo(p[0], p[1]);
         ctx.lineTo(t[0], t[1]);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = "rgba(23,201,168,0.9)";
+        ctx.fillStyle = "rgba(122,189,106,0.9)";
         ctx.font = "500 9.5px ui-monospace, 'SF Mono', Menlo, monospace";
         ctx.fillText("DATASET CAMERA", p[0] + 10, p[1] - 8);
       }

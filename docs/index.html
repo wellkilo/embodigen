@@ -10,10 +10,13 @@
 <meta property="og:description" content="引擎持有精确真值，视频模型负责真实外观，验证器证明两者仍然对齐。" />
 <meta property="og:image" content="https://wellkilo.github.io/embodigen/assets/screens/hero.jpg" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="theme-color" content="#08090c" />
+<meta name="theme-color" content="#051317" />
 <link rel="icon" href="favicon.ico" sizes="any" />
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=Fragment+Mono&family=Libre+Baskerville:ital,wght@0,400;1,400&family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@400;500&display=swap" />
 <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -28,6 +31,7 @@
     <span class="brand-text">EMBODIGEN</span>
   </a>
   <nav class="nav">
+    <a href="#worlds">虚拟世界</a>
     <a href="#live">实况</a>
     <a href="#pipeline">流程</a>
     <a href="#compare">对齐</a>
@@ -43,22 +47,25 @@
   <!-- 00 · HERO -->
   <section class="hero">
     <div class="shell hero-inner">
-      <p class="eyebrow" data-reveal><span class="live-dot" aria-hidden="true"></span>EMBODIED DATA ENGINE <span class="sep">/</span> v0.2</p>
+      <p class="eyebrow" data-reveal><span class="live-dot" aria-hidden="true"></span>EMBODIED DATA ENGINE <span class="sep">/</span> v0.3</p>
       <h1 data-reveal>
         <span class="line">任务描述进</span>
         <span class="line"><em data-scramble>带标签的真实画面</em>出</span>
       </h1>
       <p class="lede" data-reveal>
         引擎持有世界状态，所以动作、位姿、分割都是精确真值；<br class="br-wide" />
-        视频模型只管把白模画得像真的；验证器负责证明两者没有走样。
+        视频模型只管把白模画得像真的；验证器负责证明两者没有走样。<br class="br-wide" />
+        同一套做法也用在虚拟世界：把游戏录像做成 GameScaling 式的训练数据。
       </p>
       <div class="cta" data-reveal>
-        <a class="btn primary" href="#live">看实时回放 <span aria-hidden="true">→</span></a>
+        <a class="btn primary" href="#worlds">虚拟世界管线 <span aria-hidden="true">→</span></a>
+        <a class="btn ghost" href="#live">机器人实时回放 <span aria-hidden="true">→</span></a>
         <a class="btn ghost" href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">源码仓库 <span aria-hidden="true">↗</span></a>
       </div>
       <dl class="stats" data-reveal>
-        <div><dt>6</dt><dd>可替换模块</dd></div>
-        <div><dt>0</dt><dd>第三方依赖</dd></div>
+        <div><dt>2</dt><dd>条数据管线</dd></div>
+        <div><dt>0</dt><dd>核心第三方依赖</dd></div>
+        <div><dt><span id="stat-real">9/9</span></dt><dd>真实游戏录像过闸</dd></div>
         <div><dt><span id="stat-p95">1.59</span><small>mm</small></dt><dd>忠实度 p95</dd></div>
       </dl>
     </div>
@@ -74,6 +81,83 @@
       <span>GROUND TRUTH</span><i>✦</i><span>DEPTH · f32</span><i>✦</i><span>INSTANCE SEG · u16</span><i>✦</i><span>PLÜCKER RAYS</span><i>✦</i><span>7-D ACTION</span><i>✦</i><span>PHASE LABELS</span><i>✦</i><span>FIDELITY GATE</span><i>✦</i><span>PROVENANCE</span><i>✦</i><span>LEROBOT-SHAPED</span><i>✦</i>
     </div>
   </div>
+
+  <!-- WORLDS · GameScaling virtual-world pipeline -->
+  <section class="section worlds" id="worlds">
+    <div class="shell">
+      <header class="section-head">
+        <p class="eyebrow" data-reveal>GAMESCALING — VIRTUAL WORLDS</p>
+        <h2 data-reveal>把游戏录像，<br />做成能做 scaling 研究的训练数据。</h2>
+        <p class="section-lede" data-reveal>
+          服务于 GameScaling 这类工作：游戏是具身智能体的仿真环境。录像进来，先统一成论文的键鼠动作格式、按论文规则过闸，
+          再按录像划分验证集、按 S1–S5 配比和嵌套预算切出训练分片。下面每个数字都来自真实运行。
+        </p>
+      </header>
+
+      <ol class="w-stages" data-reveal>
+        <li>
+          <span class="w-idx">01</span>
+          <h3>采集</h3>
+          <p class="w-io">rollout · ingest</p>
+          <p>参考世界和 ViZDoom 直接录制；VPT、D2E、Open-P2P 三个公开数据集按各自真实文件格式转换。</p>
+        </li>
+        <li>
+          <span class="w-idx">02</span>
+          <h3>清洗</h3>
+          <p class="w-io">curate</p>
+          <p>5 Hz 观测、200 ms 动作包（Δx Δy Δz + 6 个 33 ms 按键槽）；论文的采集闸门；从像素测输入日志的时延。</p>
+        </li>
+        <li>
+          <span class="w-idx">03</span>
+          <h3>构建</h3>
+          <p class="w-io">build</p>
+          <p>按录像（和会话）划分三级验证；S1–S5 锚点配比 × 嵌套预算；稀疏推理标注；带 sha256 的分片。</p>
+        </li>
+      </ol>
+
+      <div class="w-pair">
+        <div class="w-sample spot" data-reveal>
+          <p class="w-label">一条训练样本 · <span id="w-sample-src">—</span></p>
+          <pre id="w-sample"><code>—</code></pre>
+          <p class="w-note">画面引用 <code id="w-sample-img">—</code>，动作来自真实输入日志。这里的 rationale 由 <code>mock-rationale-v0</code> 模板生成；接入云端模型（<code>annotator = "llm"</code>）后替换。</p>
+        </div>
+        <figure class="w-figure spot" data-reveal>
+          <img src="assets/gameplay-preview.gif" width="964" height="222" loading="lazy" alt="参考世界的一条录像：画面、引擎深度、实例标签，下方是每个动作包的按键和鼠标 dx" />
+          <figcaption>参考世界的一条录像：画面 · 深度 · 实例标签；亮起的是按住的键，蓝条是鼠标 dx。</figcaption>
+          <dl class="w-spec">
+            <div><dt>观测</dt><dd>5 Hz，每回合一帧</dd></div>
+            <div><dt>鼠标</dt><dd>Δx Δy ∈ [−1000, 1000]，滚轮 Δz ∈ [−5, 5]</dd></div>
+            <div><dt>按键</dt><dd>6 个 33 ms 槽，每槽 0–4 个键</dd></div>
+            <div><dt>窗口</dt><dd>20 回合，步长 10</dd></div>
+            <div><dt>推理</dt><dd>约 5.7% 的回合带 rationale，按回合哈希选，所有配比密度一致</dd></div>
+          </dl>
+        </figure>
+      </div>
+
+      <div class="w-block" data-reveal>
+        <div class="w-block-head">
+          <h3>真实公开数据</h3>
+          <p class="w-io" id="w-real-sum">—</p>
+        </div>
+        <div class="w-table" id="w-sources" role="table" aria-label="真实公开录像的通过情况"></div>
+      </div>
+
+      <div class="w-grid2">
+        <div class="w-card spot" data-reveal>
+          <p class="w-label">配比 × 预算 · <span id="w-mix-budget">—</span></p>
+          <div class="w-mix" id="w-mix"></div>
+          <p class="w-note" id="w-mix-note">—</p>
+        </div>
+        <div class="w-card spot" data-reveal>
+          <p class="w-label">对齐校验 · 在真实录像上注入时延</p>
+          <div class="w-align" id="w-align"></div>
+          <p class="w-note">注入常数时延：从像素测出、平移日志、复检对齐。注入时钟漂移：拒绝，不用一个常数硬修。D2E 测得值含其原有的约 −33 ms 采集偏移。</p>
+        </div>
+      </div>
+
+      <p class="w-checks" id="w-checks" data-reveal>—</p>
+    </div>
+  </section>
 
   <!-- LIVE · 3D episode replay -->
   <section class="section live-section" id="live">
@@ -452,7 +536,7 @@ embodigen validate --episode out/episodes/franka-0000</code><code class="term-ou
       <a href="https://github.com/wellkilo/embodigen" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/wellkilo/embodigen/blob/main/README.md" target="_blank" rel="noopener">README</a>
       <a href="assets/showcase.mp4" target="_blank" rel="noopener">演示视频</a>
-      <span class="dim">REFERENCE IMPLEMENTATION · v0.2</span>
+      <span class="dim">REFERENCE IMPLEMENTATION · v0.3</span>
     </div>
   </div>
 </footer>
@@ -460,5 +544,7 @@ embodigen validate --episode out/episodes/franka-0000</code><code class="term-ou
 <script src="assets/metrics.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/live.js"></script>
+<script src="assets/gameplay.js"></script>
+<script src="assets/worlds.js"></script>
 </body>
 </html>
