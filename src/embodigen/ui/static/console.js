@@ -354,6 +354,23 @@
       return [64 + (x & 191), 64 + ((x >> 8) & 191), 64 + ((x >> 16) & 191)];
     });
   }
+  let PLAYER = null;  // the one running frame player; opening another episode stops it
+  function stopPlayer() {
+    if (PLAYER) { clearInterval(PLAYER.id); PLAYER.button.textContent = "播放"; PLAYER = null; }
+  }
+  function playButton(step, fps) {
+    const button = el("button", { class: "ghost small" }, "播放");
+    button.addEventListener("click", () => {
+      if (PLAYER && PLAYER.button === button) { stopPlayer(); return; }
+      stopPlayer();
+      button.textContent = "暂停";
+      PLAYER = { button, id: setInterval(() => (button.isConnected ? step() : stopPlayer()), 1000 / fps) };
+    });
+    return button;
+  }
+  function clearCanvas(cv) {
+    if (cv) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
+  }
   const bufCache = new Map();
   function buf(rel) {
     if (!bufCache.has(rel)) {
@@ -385,6 +402,7 @@
   }
 
   async function openEpisode(ep, view) {
+    stopPlayer();
     let tree, info, rows, fid, scene;
     try {
       tree = await api(`/api/tree?path=${encodeURIComponent(ep.path)}`);
@@ -409,10 +427,9 @@
     const cvD = el("canvas", { width: w, height: h }), cvS = el("canvas", { width: w, height: h });
     const panel = (node, label, note) => el("figure", { class: "chan" }, node, el("figcaption", {}, el("b", {}, label), " ", note));
     const slider = el("input", { type: "range", min: 0, max: Math.max(frames.length - 1, 0), value: 0, "aria-label": "帧" });
-    const play = el("button", { class: "ghost small" }, "播放");
+    const play = playButton(() => show((+slider.value + 1) % frames.length), fps);
     const meta = el("div", { class: "frame-meta" });
     const line = el("pre", { class: "src one" });
-    let timer = null;
     async function show(i) {
       const f = frames[i];
       if (!f) return;
@@ -432,14 +449,6 @@
       line.textContent = lines[i];
     }
     slider.addEventListener("input", () => show(+slider.value));
-    play.addEventListener("click", () => {
-      if (timer) { clearInterval(timer); timer = null; play.textContent = "播放"; return; }
-      play.textContent = "暂停";
-      timer = setInterval(() => {
-        if (!view.isConnected) { clearInterval(timer); return; }
-        show((+slider.value + 1) % frames.length);
-      }, 1000 / fps);
-    });
 
     /* file browser: every file under the episode, shown as written */
     const viewer = el("div", { class: "viewer" }, el("p", { class: "hint" }, "选一个文件查看原始内容。"));
@@ -515,9 +524,12 @@
   }
 
   async function openStep(ds, ep, view) {
+    stopPlayer();
     const PAGE = 200, pages = new Map();
     const names = ((ds.info.features || {}).action || {}).names || [];
-    const depthShape = ((ds.info.features || {})["observation.depth"] || {}).shape;
+    const feats = ds.info.features || {};
+    const depthShape = (feats["observation.depth"] || {}).shape;
+    const segShape = (feats["observation.segmentation"] || {}).shape;
     async function row(i) {
       const p = Math.floor(i / PAGE);
       if (!pages.has(p)) {
@@ -528,27 +540,24 @@
     }
     const img = el("img", { alt: "observation" });
     const cvD = depthShape ? el("canvas", { width: depthShape[1], height: depthShape[0] }) : null;
-    const cvS = depthShape ? el("canvas", { width: depthShape[1], height: depthShape[0] }) : null;
+    const cvS = segShape ? el("canvas", { width: segShape[1], height: segShape[0] }) : null;
     const slider = el("input", { type: "range", min: 0, max: ep.length - 1, value: 0, "aria-label": "步" });
-    const play = el("button", { class: "ghost small" }, "播放");
+    const play = playButton(() => show((+slider.value + 1) % ep.length), ds.info.fps || 5);
     const meta = el("div", { class: "frame-meta" });
     const act = el("div", { class: "act" });
     const line = el("pre", { class: "src one" });
-    let timer = null;
     async function show(i) {
       slider.value = i;
       const raw = await row(i);
       if (+slider.value !== i || !raw) return;
       const r = JSON.parse(raw);
       img.src = fileUrl(`${ds.path}/${r.frames["observation.images.main"]}`);
-      if (cvD && r.frames["observation.depth"]) {
-        const [w, h] = [depthShape[1], depthShape[0]];
-        const [d, s] = await Promise.all([buf(`${ds.path}/${r.frames["observation.depth"]}`),
-          buf(`${ds.path}/${r.frames["observation.segmentation"]}`)]);
-        if (+slider.value !== i) return;
-        drawDepth(cvD, w, h, d);
-        drawSeg(cvS, w, h, s);
-      }
+      // each channel only when this step has it; otherwise blank, never the previous step's
+      const dRel = cvD && r.frames["observation.depth"], sRel = cvS && r.frames["observation.segmentation"];
+      const [d, sg] = await Promise.all([dRel ? buf(`${ds.path}/${dRel}`) : null, sRel ? buf(`${ds.path}/${sRel}`) : null]);
+      if (+slider.value !== i) return;
+      if (d) drawDepth(cvD, depthShape[1], depthShape[0], d); else clearCanvas(cvD);
+      if (sg) drawSeg(cvS, segShape[1], segShape[0], sg); else clearCanvas(cvS);
       meta.replaceChildren(el("b", {}, `第 ${i + 1}/${ep.length} 步`), ` · t = ${r.timestamp}s（原录像 ${r.source_time}s）· 任务：${r.task}`,
         r["observation.state"] ? ` · 位姿 [${r["observation.state"].map((v) => v.toFixed(2)).join(", ")}]` : "");
       const held = names.map((n, k) => [n, r.action[k]]).filter(([n, v]) => n.startsWith("key.") && v > 0);
@@ -568,22 +577,12 @@
       line.textContent = raw;
     }
     slider.addEventListener("input", () => show(+slider.value));
-    play.addEventListener("click", () => {
-      if (timer) { clearInterval(timer); timer = null; play.textContent = "播放"; return; }
-      play.textContent = "暂停";
-      timer = setInterval(() => {
-        if (!view.isConnected) { clearInterval(timer); return; }
-        show((+slider.value + 1) % ep.length);
-      }, 1000 / (ds.info.fps || 5));
-    });
     const chans = [el("figure", { class: "chan wide" }, img, el("figcaption", {}, el("b", {}, "observation.images.main"), " PNG"))];
-    if (cvD) {
-      chans.push(el("figure", { class: "chan" }, cvD, el("figcaption", {}, el("b", {}, "observation.depth"), " .f32")),
-        el("figure", { class: "chan" }, cvS, el("figcaption", {}, el("b", {}, "observation.segmentation"), " .u16")));
-    }
+    if (cvD) chans.push(el("figure", { class: "chan" }, cvD, el("figcaption", {}, el("b", {}, "observation.depth"), " .f32")));
+    if (cvS) chans.push(el("figure", { class: "chan" }, cvS, el("figcaption", {}, el("b", {}, "observation.segmentation"), " .u16")));
     view.replaceChildren(
       el("h3", {}, `回合 ${ep.episode_index} · ${ep.recording_id} · ${ep.world}`),
-      el("div", { class: "player" }, el("div", { class: `chans emb${cvD ? "" : " solo"}` }, chans),
+      el("div", { class: "player" }, el("div", { class: `chans emb${cvD || cvS ? "" : " solo"}` }, chans),
         el("div", { class: "scrub" }, play, slider), meta, act,
         el("p", { class: "hint" }, `这一步在 data/…/episode_${String(ep.episode_index).padStart(6, "0")}.jsonl 里的原始一行：`), line));
     show(0);

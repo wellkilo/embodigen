@@ -52,6 +52,17 @@ class DatasetTest(unittest.TestCase):
             self.assertEqual([r["episode_id"] for r in index["episodes"]],
                              ["franka-0000", "franka-0001", "franka-0002"])
 
+    def test_index_from_an_older_run_gets_relative_paths_on_merge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Pipeline(_config(tmp, seed=0)).run_batch("把红色方块放进盒子", count=1)
+            path = Path(tmp) / "index.json"
+            index = json.loads(path.read_text())
+            index["episodes"][0]["path"] = str(Path(tmp).resolve() / "episodes" / "franka-0000")  # as older versions wrote it
+            path.write_text(json.dumps(index))
+            Pipeline(_config(tmp, seed=1)).run_batch("把红色方块放进盒子", count=1)
+            paths = [r["path"] for r in json.loads(path.read_text())["episodes"]]
+            self.assertEqual(paths, ["episodes/franka-0000", "episodes/franka-0001"])
+
     def test_read_episode_keeps_the_robot(self):
         with tempfile.TemporaryDirectory() as tmp:
             episode = Pipeline(_config(tmp)).run("把红色方块放进盒子", robot_name="mobile")
