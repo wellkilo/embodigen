@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-136_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-145_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -26,6 +26,7 @@
   <a href="https://wellkilo.github.io/embodigen/"><b>在线展示</b></a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#网页控制台">网页控制台</a> ·
+  <a href="#4d-世界从提示到-3dgs-到网页">4D 世界</a> ·
   <a href="#虚拟世界管线gamescaling">虚拟世界管线</a> ·
   <a href="#机器人管线它是什么">机器人管线</a> ·
   <a href="#输出长什么样">数据格式</a> ·
@@ -62,7 +63,7 @@ embodigen build   --curated data/curated --study configs/studies/reference.toml 
 
 make samples   # 真实公开数据：下载 VPT / D2E / Open-P2P 各 3 条 → ingest → curate → build
 embodigen ledger  data/mixes/reference                                      # S1–S5 × 预算 的账本
-embodigen export  --curated data/curated --out data/embodied               # 转成具身格式（LeRobot 形状）
+embodigen export  --curated data/curated --out data/embodied               # 转成具身格式（make worlds 已包含）
 ```
 
 不想记命令？`embodigen ui` 打开[网页控制台](#网页控制台)，同样的步骤都能点按钮完成。
@@ -361,6 +362,44 @@ data/embodied/
 - **新引擎**：实现 `reset / step / observe / done / close`，`observe` 返回的状态里带 `visible` 列表，脚本玩家就能直接驱动它。
 - **别的推理标注后端**：实现 `rationale(turn, context, world, media)`，设置 `name` 和 `prompt_version`，注册到 `BACKENDS["annotate"]`。缓存和"每个回合只标一次"的规则自动生效；有 `workers` 属性的后端会先并发填缓存（参照 `gameplay/llm.py`）。
 
+## 4D 世界：从提示到 3DGS 到网页
+
+```bash
+embodigen world --task "把红色方块放进盒子"            # 提示 → 场景 → 通过闸门的回合 → 4D 高斯世界
+embodigen world --rollout raycast-arena --seconds 20   # 在游戏世界里录一段 → 用引擎深度和位姿抬升
+embodigen world --recording data/raw/raycast-arena-0000  # 已有的引擎录像
+embodigen ui                                           # 「4D 世界」页：播放、环绕、编辑、导出
+```
+
+<p align="center">
+  <img src="docs/assets/screens/world4d-robot.jpg" width="420" alt="由任务描述生成的机器人场景 4D 高斯世界：桌面、盒子是静态层，方块和夹爪逐帧移动" />
+  <img src="docs/assets/screens/world4d-game.jpg" width="420" alt="由光线投射游戏录像抬升出的 4D 高斯世界：墙和棋盘格地面是静态层" />
+</p>
+
+思路来自 [3D4D（AAAI 2026 Demo）](https://arxiv.org/abs/2511.08536)：把一段生成的视频变成随时间变化的 3D 高斯（3DGS），在网页里交互地看和改。它的开源实现是 LucidDreamer 出单图 3DGS → 渲成全景 → Stable Video Diffusion 生成帧 → DPT 估深度 → 每帧点云 PLY → SuperSplat 网页查看，在 H100 上要跑半小时以上，帧之间的相机位移是写死的平移。这里的管线本来就有精确的几何，所以每一步的"估计"都换成了真值：
+
+| | 3D4D 开源实现 | 这里 |
+|---|---|---|
+| 几何来源 | DPT 单目深度（相对深度，归一化） | 机器人：场景里每个盒子、球体的真实尺寸和位置；游戏：引擎深度 |
+| 相机 | 帧间按固定步长平移 | 录制时的真实相机（机器人场景相机；玩家的位置、偏航、俯仰） |
+| 动静分离 | 无，每帧整份点云 | 静态层只存一份；移动的物体、夹爪、敌人和道具按帧存 |
+| 模型与算力 | LucidDreamer + SVD + DPT，本地 GPU | 不跑模型，纯标准库，CPU 上几秒到几十秒 |
+| 网页 | SuperSplat（读 PLY 序列） | 控制台内置 WebGL2 高斯渲染器：时间轴播放、环绕 / 录制视角、球形选择删除与撤销、导出 PLY、录制 WebM；同时写标准 3DGS PLY，SuperSplat 也能打开 |
+
+机器人场景的高斯是从物体表面直接采样的面元（薄圆盘，沿法线很薄），所以从任何角度看都是完整的，不是单视角深度图那样的一层壳；太大的面（5 m 的桌面）只保留工作区周围 0.35 m。游戏世界是逐帧抬升：墙和地面按 6 cm 体素合并为静态层，同一个体素保留离得最近时看到的颜色；敌人、道具只在看到它们的那一帧出现。天花板默认去掉，这样能从上方看清关卡（`--ceiling` 保留）。
+
+```
+data/worlds/<name>/
+├── world.json             # fps、帧数、每帧相机、包围盒、各文件、来源
+├── static.splat           # 每帧都有的高斯（32 字节一条：位置、尺度、RGBA、四元数）
+├── dynamic/000000.splat   # 只属于第 i 帧的高斯
+└── ply/frame_000000.ply   # 第 i 帧静态 + 动态，标准 3DGS 布局（默认总量 ≤ 64 MB 时每帧都写，否则只写第一帧）
+```
+
+实测（本机 CPU）：任务 → 世界 28 帧，9462 个静态 + 每帧最多 795 个动态高斯，3.9 秒；30 秒的游戏录像 150 帧，40326 个静态 + 每帧最多 2100 个动态高斯，22 秒。测试把机器人世界的高斯中心用场景相机投回画面，物体像素被覆盖的比例 > 97%；游戏世界里 97% 以上的静态高斯落在网格墙面或 z = 0 的地面上。
+
+没做的部分：3D4D 用视觉语言模型给每帧打重要性图来做注视点渲染；这里的高斯数量在几万级，浏览器直接全分辨率渲染，用不上。生成式的外观（用云端图生视频模型给白模换皮）可以作为写实化后端接进来，需要先选定服务商并提供 key。
+
 ## 机器人管线：它是什么
 
 机器人策略训练缺的不是视频，是**带准确动作标签**的视频。纯仿真的标签准，但画面是 CG；生成模型的画面真，但动作只能靠估计。
@@ -513,6 +552,7 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen curate --raw <dir> --out <dir> [--no-realign]` | 对齐校验、动作规范化、闸门 |
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
 | `embodigen export --curated <dir> --out <dir> [--worlds a,b] [--size WxH]` | 把通过闸门的录像写成具身格式（LeRobot 形状：每步画面 + 数值动作 + 位姿/深度/分割） |
+| `embodigen world --task "..." \| --rollout <world> \| --recording <dir> \| --episode <dir>` | 生成 4D 高斯世界（3DGS），在控制台「4D 世界」里看 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
 | `embodigen ui [--port 8765]` | 本地网页控制台：上面这些步骤都能在浏览器里点按钮完成，带实时日志和停止按钮 |
@@ -554,11 +594,12 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 136 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 145 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
 make samples    # 真实公开数据：下载 → ingest → curate → build（D2E 需要 Python 3.14+ 或 pip install -e '.[d2e]'）
+make world4d    # 4D 高斯世界：一个来自任务描述，一个来自游戏录像
 make ui         # 网页控制台（同 embodigen ui）
 make docs       # 从真实运行重建展示页素材（约 75 秒；虚拟世界部分读 make worlds / make samples 的账本）
 ```

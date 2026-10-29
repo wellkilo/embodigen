@@ -53,6 +53,7 @@
     $$(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
     $$(".page").forEach((p) => p.classList.toggle("on", p.dataset.page === tab));
     if (tab === "data") loadDatasets();
+    if (tab === "world") loadWorlds();
     try { localStorage.setItem("embodigen-tab", tab); } catch (e) { /* ignore */ }
   }
   $$(".tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
@@ -74,6 +75,8 @@
     fillSelect($("#study-select"), STATE.studies.map((s) => [s.path, `${s.name} · 预算 ${s.budgets.join("/")} h`]),
       "configs/studies/reference.toml");
     fillSelect($("#robot-select"), STATE.robots.map((r) => [r, r]));
+    fillSelect($("#world-robot"), STATE.robots.map((r) => [r, r]));
+    fillSelect($("#world-rollout"), STATE.worlds.filter((w) => w.engine === "raycast").map((w) => [w.label, w.label]), "raycast-arena");
     fillLists(STATE.datasets);
     renderLLM(STATE.llm);
     renderHistory(STATE.jobs);
@@ -190,6 +193,7 @@
         pollDoneFor.add(j.id);
         loadState().catch(() => {});
         if ($(".page.on").dataset.page === "data") loadDatasets();
+        if ($(".page.on").dataset.page === "world") loadWorlds(j.action === "world" && j.status === "ok");
       }
     }
   }
@@ -642,6 +646,118 @@
       const job = await api("/api/run", { action: "llm-check", params: {} });
       follow(job.id, true);
     } catch (e) { toast(e.message); }
+  });
+
+  /* ------------------------------------------------------------------ 4D worlds */
+  let VIEWER = null, V4PLAY = null, V4REC = null;
+  async function loadWorlds(openNewest) {
+    let ds;
+    try { ds = await api("/api/datasets"); } catch (e) { toast(e.message); return; }
+    const rows = (ds.worlds || []).filter((w) => !w.path.includes("/_work/"));
+    const KIND = { "robot-episode": "机器人", "game-recording": "游戏" };
+    $("#world-list").replaceChildren(...(rows.length ? rows.map((w) => el("li", {}, el("button", { class: "ds", onclick: () => openWorld(w.path) },
+      el("b", {}, w.path), el("span", {}, `${KIND[w.kind] || w.kind} · ${w.label || w.name} · ${w.frames} 帧 · ${w.static} 个静态高斯`))))
+      : [el("li", { class: "empty" }, "还没有世界。用上面的表单生成一个。")]));
+    if (openNewest && rows.length) {
+      const newest = $("#job-steps code") ? $("#job-steps code").textContent : "";
+      const hit = rows.find((w) => newest.includes(w.name)) || rows[rows.length - 1];
+      openWorld(hit.path);
+    }
+  }
+  $("#world-rescan").addEventListener("click", () => loadWorlds());
+
+  async function openWorld(path) {
+    let r;
+    try { r = await api(`/api/world?path=${encodeURIComponent(path)}`); } catch (e) { toast(e.message); return; }
+    const w = r.world;
+    $("#viewer4d").hidden = false;
+    if (!VIEWER) {
+      try {
+        VIEWER = new SplatViewer($("#v4-canvas"), {
+          fetchBuffer: (rel) => fetch(fileUrl(`${VIEWER.base}/${rel}`)).then((res) => {
+            if (!res.ok) throw new Error(`${rel}: ${res.status}`);
+            return res.arrayBuffer();
+          }),
+          onFrame: (i) => {
+            $("#v4-frame").value = i;
+            const f = VIEWER.world.per_frame[i];
+            $("#v4-hud").textContent = `帧 ${i + 1}/${VIEWER.world.frames} · 静态 ${VIEWER.world.static.count} + 动态 ${f ? f.count : 0}`;
+          },
+        });
+      } catch (e) { toast(`无法启动 3D 视图：${e.message}`); return; }
+      VIEWER.onMode = (m) => $$("#viewer4d [data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+      VIEWER.onPick = (hit) => {
+        if (!hit) { VIEWER.clearSelection(); return; }
+        const n = VIEWER.selectSphere(hit.pos, +$("#v4-radius").value || 0);
+        toast(`选中 ${n} 个高斯（中心 ${hit.pos.map((v) => v.toFixed(2)).join(", ")}）`, "info");
+      };
+    }
+    stopV4();
+    VIEWER.base = r.path;
+    const src = w.source || {};
+    $("#v4-title").textContent = `${r.path} · ${src.instruction || src.title || w.name}`;
+    $("#v4-info").textContent = `${w.frames} 帧 @ ${w.fps} fps · 静态：${(w.layers || {}).static || ""} · 动态：${(w.layers || {}).dynamic || ""}`;
+    $("#v4-frame").max = Math.max(0, w.frames - 1);
+    $("#v4-radius").value = (w.bounds.radius * 0.06).toFixed(3);
+    try { await VIEWER.load(w); } catch (e) { toast(e.message); return; }
+    $("#viewer4d").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function stopV4() {
+    if (V4PLAY) { clearInterval(V4PLAY); V4PLAY = null; $("#v4-play").textContent = "播放"; }
+  }
+  $("#v4-play").addEventListener("click", () => {
+    if (!VIEWER || !VIEWER.world) return;
+    if (V4PLAY) { stopV4(); return; }
+    $("#v4-play").textContent = "暂停";
+    const tick = () => {
+      if (!$("#v4-canvas").isConnected) return stopV4();
+      VIEWER.setFrame(VIEWER.frame + 1);
+    };
+    V4PLAY = setInterval(tick, 1000 / (VIEWER.world.fps * +$("#v4-speed").value));
+  });
+  $("#v4-speed").addEventListener("change", () => { if (V4PLAY) { stopV4(); $("#v4-play").click(); } });
+  $("#v4-frame").addEventListener("input", (e) => VIEWER && VIEWER.setFrame(+e.target.value));
+  $$("#viewer4d [data-mode]").forEach((b) => b.addEventListener("click", () => {
+    if (!VIEWER) return;
+    VIEWER.setMode(b.dataset.mode);
+    VIEWER.onMode(b.dataset.mode);
+  }));
+  $("#v4-static").addEventListener("change", (e) => VIEWER && VIEWER.setLayer("static", e.target.checked));
+  $("#v4-dynamic").addEventListener("change", (e) => VIEWER && VIEWER.setLayer("dynamic", e.target.checked));
+  $("#v4-delete").addEventListener("click", () => {
+    if (!VIEWER) return;
+    const n = VIEWER.deleteSelection();
+    toast(n ? `删除了 ${n} 个高斯（可撤销）` : "先单击场景选中一些高斯", "info");
+  });
+  $("#v4-undo").addEventListener("click", () => VIEWER && !VIEWER.undo() && toast("没有可撤销的删除", "info"));
+  $("#v4-clear").addEventListener("click", () => VIEWER && VIEWER.clearSelection());
+  function download(blob, name) {
+    const a = el("a", { href: URL.createObjectURL(blob), download: name });
+    document.body.append(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  $("#v4-ply").addEventListener("click", () => {
+    if (!VIEWER || !VIEWER.world) return;
+    download(VIEWER.exportPly(), `${VIEWER.world.name}-frame${String(VIEWER.frame).padStart(4, "0")}.ply`);
+  });
+  $("#v4-rec").addEventListener("click", () => {
+    if (!VIEWER || !VIEWER.world) return;
+    if (V4REC) { V4REC.stop(); return; }
+    if (!window.MediaRecorder) { toast("这个浏览器不支持录制"); return; }
+    const chunks = [];
+    const rec = new MediaRecorder($("#v4-canvas").captureStream(30), { mimeType: "video/webm" });
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = () => {
+      V4REC = null;
+      $("#v4-rec").textContent = "录制视频";
+      download(new Blob(chunks, { type: "video/webm" }), `${VIEWER.world.name}.webm`);
+    };
+    rec.start();
+    V4REC = rec;
+    $("#v4-rec").textContent = "停止录制";
+    const keep = setInterval(() => { if (!V4REC) clearInterval(keep); else VIEWER.dirty = true; }, 1000 / 30);
   });
 
   /* ------------------------------------------------------------------ boot */

@@ -48,7 +48,9 @@ MAX_LINES = 4000
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 MEDIA = {".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".mp4": "video/mp4",
          # robot episode buffers (little-endian float32 depth, uint16 ids, packed RGB), drawn by the page
-         ".f32": "application/octet-stream", ".u16": "application/octet-stream", ".rgb": "application/octet-stream"}
+         ".f32": "application/octet-stream", ".u16": "application/octet-stream", ".rgb": "application/octet-stream",
+         # 4D worlds: splat records for the viewer, 3DGS PLY for download
+         ".splat": "application/octet-stream", ".ply": "application/octet-stream"}
 TEXT = {".json", ".jsonl", ".txt", ".md", ".toml", ".csv", ".yaml", ".yml", ".log"}
 TEXT_BYTES = 256 * 1024  # shown as is; longer files are cut, with the total size reported
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -66,7 +68,7 @@ LABELS = {"input": "输入目录", "out": "输出目录", "raw": "原始录像�
           "task": "任务", "model": "模型名", "episodes": "段数", "seconds": "秒数", "seed": "随机种子",
           "lag_ms": "输入错位", "drift_ms_per_min": "时钟漂移", "start": "起始秒", "frames": "帧数",
           "provider": "服务商", "source": "数据来源", "study": "研究配置", "annotator": "理由标注",
-          "profile": "玩家行为", "robot": "机器人", "resolution": "分辨率", "size": "画面尺寸", "worlds": "世界"}
+          "profile": "玩家行为", "robot": "机器人", "resolution": "分辨率", "size": "画面尺寸", "worlds": "世界", "path": "路径", "world": "世界", "ply": "PLY"}
 
 
 # --------------------------------------------------------------------------- form values
@@ -286,7 +288,7 @@ class Workspace:
 
     def datasets(self) -> dict[str, list[dict[str, Any]]]:
         found: dict[str, list[dict[str, Any]]] = {"inputs": [], "raw": [], "curated": [], "mixes": [], "embodied": [],
-                                                  "robot": []}
+                                                  "robot": [], "worlds": []}
         skip = {"frames", "depth", "labels", "turns", "cache", "val", "episodes", "rejected", "__pycache__"}
         stack = [(self.root / top, 0) for top in ("data", "out") if (self.root / top).is_dir()]
         while stack:
@@ -310,6 +312,16 @@ class Workspace:
                     found["mixes"].append({"path": self.rel(d), "updated_at": data.get("updated_at", ""),
                                            "study": data.get("study", ""), "annotator": data.get("annotator", ""),
                                            "datasets": len(data.get("grid", []))})
+                continue
+            if (d / "world.json").exists():
+                try:
+                    wj = json.loads((d / "world.json").read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    wj = {}
+                found["worlds"].append({"path": self.rel(d), "name": wj.get("name", d.name), "frames": wj.get("frames", 0),
+                                        "fps": wj.get("fps", 0), "static": wj.get("static", {}).get("count", 0),
+                                        "kind": wj.get("source", {}).get("kind", ""),
+                                        "label": wj.get("source", {}).get("instruction") or wj.get("source", {}).get("title", "")})
                 continue
             if (d / "meta" / "info.json").exists() and (d / "meta" / "episodes.jsonl").exists():
                 try:
@@ -424,6 +436,12 @@ class Workspace:
                 if i >= start:
                     lines.append(line.rstrip("\n"))
         return {"episode": episode, "start": start, "lines": lines}
+
+    def world(self, rel: str) -> dict[str, Any]:
+        base = self.inside(rel)
+        if not (base / "world.json").exists():
+            raise BadRequest(f"{rel} 下没有 world.json")
+        return {"path": self.rel(base), "world": json.loads((base / "world.json").read_text(encoding="utf-8"))}
 
     def tree(self, rel: str) -> dict[str, Any]:
         """Every file under a directory (an episode), with sizes."""
@@ -591,6 +609,28 @@ def plan(action: str, p: dict[str, Any], ws: Workspace) -> tuple[str, list[list[
             args.append("--overwrite")
         return "导出具身格式", [_cli(*args)], []
 
+    if action == "world":
+        source = _choice(p, "source", "task", ("task", "rollout", "recording", "episode"))
+        args = ["world"]
+        if source == "task":
+            from embodigen.robots import available_robots
+
+            args += ["--task", _text(p, "task", "把红色方块放进盒子"), "--robot", _choice(p, "robot", "franka", available_robots()),
+                     "--seed", _num(p, "seed", 0, 0, 10**9, int)]
+        elif source == "rollout":
+            engines = {w["label"] for w in ws.worlds() if w["engine"] == "raycast"}
+            args += ["--rollout", _choice(p, "world", "raycast-arena", sorted(engines)),
+                     "--seconds", _num(p, "seconds", 20.0, 2, 300), "--seed", _num(p, "seed", 0, 0, 10**9, int)]
+        else:
+            args += [f"--{source}", _text(p, "path")]
+        if source in ("rollout", "recording") and p.get("ceiling"):
+            args.append("--ceiling")
+        out = str(p.get("out") or "").strip()
+        if out:
+            args += ["--out", _text(p, "out")]
+        args += ["--ply", _choice(p, "ply", "auto", ("auto", "all", "first", "none"))]
+        return "生成 4D 世界", [_cli(*args)], []
+
     if action == "llm-check":
         return "测试模型连接", [_cli("llm", "check", "--ping")], []
 
@@ -604,6 +644,7 @@ def plan(action: str, p: dict[str, Any], ws: Workspace) -> tuple[str, list[list[
                  "--drift-ms-per-min", 600, "--out", "data/raw"),
             _cli("curate", "--raw", "data/raw", "--out", "data/curated"),
             _cli("build", "--curated", "data/curated", "--study", "configs/studies/reference.toml", "--out", "data/mixes"),
+            _cli("export", "--curated", "data/curated", "--out", "data/embodied", "--overwrite"),
         ]
         return "参考世界全流程（make worlds）", steps, []
 
@@ -628,6 +669,8 @@ def plan(action: str, p: dict[str, Any], ws: Workspace) -> tuple[str, list[list[
         if annotator:
             build += ["--annotator", annotator]
         steps.append(_cli(*build))
+        if p.get("video"):  # frames are decodable only with the videos
+            steps.append(_cli("export", "--curated", "data/samples-curated", "--out", "data/samples-embodied", "--overwrite"))
         return "公开样例全流程（make samples）", steps, []
 
     raise BadRequest(f"未知操作 {action!r}")
@@ -773,6 +816,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(ws.recordings(arg("dir")))
         if path == "/api/ledger":
             return self._json(ws.ledger(arg("path")))
+        if path == "/api/world":
+            return self._json(ws.world(arg("path")))
         if path == "/api/embodied":
             return self._json(ws.embodied(arg("path")))
         if path == "/api/rows":

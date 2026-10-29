@@ -80,7 +80,8 @@ class ConsoleTest(unittest.TestCase):
                                                                                   "hf_endpoint": "https://hf-mirror.com"}})
         self.assertEqual(code, 200)
         self.assertEqual(r["steps"][0], "embodigen fetch --out data/samples --video --hf-endpoint https://hf-mirror.com")
-        self.assertEqual(len(r["steps"]), 6)
+        self.assertEqual(len(r["steps"]), 7)  # with videos the run ends in the embodied export
+        self.assertTrue(r["steps"][-1].startswith("embodigen export --curated data/samples-curated"))
         _, r = self.call("/api/plan", {"action": "ingest", "params": {"source": "vpt", "input": "--help"}})
         self.assertIn("不接受", r["error"])
         _, r = self.call("/api/plan", {"action": "rollout", "params": {"worlds": ["no-such-world"]}})
@@ -163,6 +164,27 @@ class ConsoleTest(unittest.TestCase):
         with urllib.request.urlopen(f"{self.base}/files/{ep['path']}/frames/depth/000.f32?t=t0k", timeout=10) as r:
             self.assertEqual(len(r.read()), 64 * 64 * 4)
         self.assertEqual(self.call("/api/text?path=../outside.json")[0], 400)
+
+    def test_worlds_are_listed_and_served_and_the_form_builds_the_command(self):
+        from embodigen.world4d.gaussians import Gaussians
+        from embodigen.world4d.world import View, World, write_world
+
+        g = Gaussians()
+        g.surfel((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.01, (1.0, 0.0, 0.0))
+        write_world(World("w", 5.0, g, [Gaussians(), g], [View((1, 1, 1), (0, 0, 0))] * 2), self.tmp / "data" / "worlds" / "w")
+        _, ds = self.call("/api/datasets")
+        self.assertEqual([w["path"] for w in ds["worlds"]], ["data/worlds/w"])
+        _, w = self.call("/api/world?path=data/worlds/w")
+        self.assertEqual(w["world"]["frames"], 2)
+        with urllib.request.urlopen(f"{self.base}/files/data/worlds/w/static.splat?t=t0k", timeout=10) as r:
+            self.assertEqual(len(r.read()), 32)
+        _, plan = self.call("/api/plan", {"action": "world", "params": {"source": "rollout", "world": "raycast-maze",
+                                                                        "seconds": 15, "ceiling": True}})
+        self.assertEqual(plan["steps"], ["embodigen world --rollout raycast-maze --seconds 15 --seed 0 --ceiling --ply auto"])
+        _, plan = self.call("/api/plan", {"action": "world", "params": {"source": "task", "task": "把红色方块放进盒子"}})
+        self.assertTrue(plan["steps"][0].startswith("embodigen world --task '把红色方块放进盒子' --robot franka"))
+        _, plan = self.call("/api/plan", {"action": "world", "params": {"source": "recording", "path": "--x"}})
+        self.assertIn("不接受", plan["error"])
 
     def test_one_job_at_a_time_and_stop_ends_it(self):
         runner = self.srv.runner
