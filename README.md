@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-121_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-130_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -62,6 +62,7 @@ embodigen build   --curated data/curated --study configs/studies/reference.toml 
 
 make samples   # 真实公开数据：下载 VPT / D2E / Open-P2P 各 3 条 → ingest → curate → build
 embodigen ledger  data/mixes/reference                                      # S1–S5 × 预算 的账本
+embodigen export  --curated data/curated --out data/embodied               # 转成具身格式（LeRobot 形状）
 ```
 
 不想记命令？`embodigen ui` 打开[网页控制台](#网页控制台)，同样的步骤都能点按钮完成。
@@ -321,6 +322,38 @@ data/
 
 图片路径相对于 manifest 里的 `media_root`。
 
+### 导出为具身格式（LeRobot）
+
+上面的训练样本是 GameScaling 的对话格式：模型看图，用文本说出动作。具身策略的代码（LeRobot 和多数 VLA 训练栈）读的是另一种格式：按回合组织，每一行是一个控制步，包含观测图像、数值状态和数值动作。`export` 把筛选通过的录像写成这种格式，一条录像一个回合，每 200 ms 动作包一行：
+
+```bash
+embodigen export --curated data/curated --out data/embodied                    # 参考世界：带位姿、深度、分割
+embodigen export --curated data/samples-curated --out data/samples-embodied    # 真实录像：从视频解码（需要 [video]）
+```
+
+```
+data/embodied/
+├── meta/info.json        # 特征、fps、划分、路径模板（LeRobot v2.1 的键）
+├── meta/episodes.jsonl   # 每个回合：长度、任务、来自哪条录像 / 世界 / 来源 / session
+├── meta/tasks.jsonl      # 任务文本（P2P 用它自带的逐帧指令，其余是 "Play <游戏名>"）
+├── meta/stats.json       # 每个数值特征的 min / max / mean / std，用来归一化
+├── data/chunk-000/episode_000000.jsonl      # 装了 pyarrow 时另写 .parquet
+└── images/observation.images.main/episode_000000/frame_000000.png
+    images/observation.depth/…  .f32           # 仅引擎世界：精确深度
+    images/observation.segmentation/… .u16     # 仅引擎世界：实例标签
+```
+
+| 特征 | 内容 |
+|---|---|
+| `observation.images.main` | 这一步开始时玩家看到的画面。整套数据集统一尺寸：引擎画面保持原尺寸，来自视频的帧按原始采集比例解码到 320×180；比例不同的画面加黑边，不拉伸 |
+| `action`（float32 × 61） | `mouse_dx, mouse_dy, wheel`（规范化后的计数）+ 58 个按键各自在 6 个 33 ms 槽里按住的比例 + `key.other` |
+| `observation.state`（float32 × 5） | `x, y, z, yaw, pitch`（z 朝上，单位和角度沿用各游戏自己的）。只有每条录像每一步都有位姿时才写（引擎世界、VPT） |
+| `action.keys` / `action.text` | 6 个槽的原样按键和 GameScaling 文本动作，向量丢掉的槽内顺序在这里都在 |
+
+动作就是 curate 之后的回合（已按对齐结果校正），导出不改标签；被闸门拒掉的录像不会进来。实测：参考世界 30 个回合、4500 步，0.4 秒导完；9 条真实录像 21734 步、72.4 分钟，56 秒导完，峰值内存 280 MB。网页控制台的「分步操作」里也能导出，「数据与结果」里可以逐步查看画面、动作和每一行原文。
+
+这只是"形状"对齐：行写成 JSONL（装了 pyarrow 时另写 parquet），画面是 PNG 而不是 mp4，所以要直接给 `lerobot.LeRobotDataset` 加载，还需要按它的版本补一次转换。
+
 ### 接新的数据源、世界或标注器
 
 - **新世界**：在 `configs/worlds/` 放一个 `<label>.toml`（类别、视角、别名、系列；能跑的世界再写 `engine` 和 `engine_args`）。`embodigen worlds` 会列出来。
@@ -479,6 +512,7 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen ingest --source vpt\|d2e\|p2p --input <dir> [-j K]` | 把数据集录像转换成统一原始布局 |
 | `embodigen curate --raw <dir> --out <dir> [--no-realign]` | 对齐校验、动作规范化、闸门 |
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
+| `embodigen export --curated <dir> --out <dir> [--worlds a,b] [--size WxH]` | 把通过闸门的录像写成具身格式（LeRobot 形状：每步画面 + 数值动作 + 位姿/深度/分割） |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
 | `embodigen ui [--port 8765]` | 本地网页控制台：上面这些步骤都能在浏览器里点按钮完成，带实时日志和停止按钮 |
@@ -520,7 +554,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 121 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 130 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）

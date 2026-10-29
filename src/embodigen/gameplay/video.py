@@ -81,15 +81,19 @@ class PyAVFrames:
         return self.rgbs(root, [frame], max_width, aspect)[0]
 
     def rgbs(self, root: Path, frames: list[str], max_width: int,
-             aspect: float = 0.0) -> list[tuple[int, int, bytes]]:
+             aspect: float = 0.0, fit: tuple[int, int] | None = None) -> list[tuple[int, int, bytes]]:
         """Referenced frames as packed RGB; one seek per run of frames from the same file.
         ``aspect`` (width / height of the original capture) undoes datasets that
-        store a 16:9 game squeezed into a square video (D2E-480p, P2P 192x192)."""
+        store a 16:9 game squeezed into a square video (D2E-480p, P2P 192x192).
+        ``fit`` scales (up or down) to the largest size inside that box at that aspect."""
         out = []
         for picked in self._decode(root, frames):
-            w = min(max_width, picked.width)
             shape = aspect or picked.width / picked.height
-            h = max(2, round(w / shape))
+            if fit:
+                w, h = fit_size(shape, *fit)
+            else:
+                w = min(max_width, picked.width)
+                h = max(2, round(w / shape))
             plane = picked.reformat(width=w, height=h, format="rgb24").planes[0]
             raw = bytes(plane)
             if plane.line_size != w * 3:
@@ -147,6 +151,13 @@ class PyAVFrames:
             out.append(prev)
             i += 1
         return out
+
+
+def fit_size(aspect: float, width: int, height: int) -> tuple[int, int]:
+    """The largest (w, h) with this aspect inside width x height."""
+    if width / height > aspect:
+        return max(2, round(height * aspect)), height
+    return width, max(2, round(width / aspect))
 
 
 def _frame_profile(frame, columns: int, band: tuple[float, float]) -> list[float]:

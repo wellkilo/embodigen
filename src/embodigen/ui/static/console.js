@@ -226,6 +226,8 @@
         $("form[data-action=ingest] [name=source]").value = r.source;
         planFor($("form[data-action=ingest]"));
       }),
+      group("具身数据集（LeRobot 格式）", ds.embodied || [], (r) => `${r.episodes} 个回合 · ${r.frames} 步 · ${r.fps} Hz · ${r.size}`,
+        (r) => openEmbodied(r.path)),
       group("机器人数据", ds.robot, (r) => `${r.episodes} 个通过的回合` + (r.rejected ? ` · ${r.rejected} 个被拒` : ""), (r) => openRobot(r.path)),
     ].filter(Boolean));
   }
@@ -322,6 +324,45 @@
   const fmtBytes = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} KB` : `${n} B`);
   const getText = (rel) => api(`/api/text?path=${encodeURIComponent(rel)}`);
 
+  /* depth (.f32) and instance ids (.u16) are little-endian buffers the page draws itself */
+  function paint(cv, w, h, color) {
+    const ctx = cv.getContext("2d"), img = ctx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) img.data.set([...color(i), 255], i * 4);
+    ctx.putImageData(img, 0, 0);
+  }
+  function drawDepth(cv, w, h, buffer, far = Infinity) {
+    const dv = new DataView(buffer);
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < w * h; k++) {
+      const z = dv.getFloat32(k * 4, true);
+      if (Number.isFinite(z) && z > 0 && z < far) { lo = Math.min(lo, z); hi = Math.max(hi, z); }
+    }
+    paint(cv, w, h, (k) => {
+      const z = dv.getFloat32(k * 4, true);
+      if (!(z > 0 && z < far)) return [5, 19, 23];
+      const t = 1 - (z - lo) / Math.max(hi - lo, 1e-6);
+      return [15 + 200 * t * t, 40 + 177 * t, 50 + 160 * t];
+    });
+    return lo === Infinity ? null : [lo, hi];
+  }
+  function drawSeg(cv, w, h, buffer) {
+    const sv = new DataView(buffer);
+    paint(cv, w, h, (k) => {
+      const id = sv.getUint16(k * 2, true);
+      if (!id) return [5, 19, 23];
+      const x = Math.imul(id, 2654435761) >>> 0;
+      return [64 + (x & 191), 64 + ((x >> 8) & 191), 64 + ((x >> 16) & 191)];
+    });
+  }
+  const bufCache = new Map();
+  function buf(rel) {
+    if (!bufCache.has(rel)) {
+      if (bufCache.size > 400) bufCache.clear();
+      bufCache.set(rel, fetch(fileUrl(rel)).then((r) => r.arrayBuffer()));
+    }
+    return bufCache.get(rel);
+  }
+
   async function openRobot(dir) {
     let r;
     try { r = await api(`/api/robot?path=${encodeURIComponent(dir)}`); } catch (e) { toast(e.message); return; }
@@ -372,16 +413,6 @@
     const meta = el("div", { class: "frame-meta" });
     const line = el("pre", { class: "src one" });
     let timer = null;
-    const cache = new Map();
-    async function buf(rel) {
-      if (!cache.has(rel)) cache.set(rel, fetch(fileUrl(rel)).then((r) => r.arrayBuffer()));
-      return cache.get(rel);
-    }
-    function paint(cv, n, color) {
-      const ctx = cv.getContext("2d"), img = ctx.createImageData(w, h);
-      for (let i = 0; i < w * h; i++) img.data.set([...color(i), 255], i * 4);
-      ctx.putImageData(img, 0, 0);
-    }
     async function show(i) {
       const f = frames[i];
       if (!f) return;
@@ -391,29 +422,13 @@
       imgP.src = fileUrl(at("photoreal"));
       const [d, sg] = await Promise.all([buf(at("depth")), buf(at("segmentation"))]);
       if (+slider.value !== i) return;
-      const dv = new DataView(d), sv = new DataView(sg);
-      let lo = Infinity, hi = -Infinity;
-      for (let k = 0; k < w * h; k++) {
-        const z = dv.getFloat32(k * 4, true);
-        if (Number.isFinite(z) && z > 0 && z < far) { lo = Math.min(lo, z); hi = Math.max(hi, z); }
-      }
-      paint(cvD, w * h, (k) => {
-        const z = dv.getFloat32(k * 4, true);
-        if (!(z > 0 && z < far)) return [5, 19, 23];
-        const t = 1 - (z - lo) / Math.max(hi - lo, 1e-6);
-        return [15 + 200 * t * t, 40 + 177 * t, 50 + 160 * t];
-      });
-      paint(cvS, w * h, (k) => {
-        const id = sv.getUint16(k * 2, true);
-        if (!id) return [5, 19, 23];
-        const x = Math.imul(id, 2654435761) >>> 0;
-        return [64 + (x & 191), 64 + ((x >> 8) & 191), 64 + ((x >> 16) & 191)];
-      });
+      const range = drawDepth(cvD, w, h, d, far);
+      drawSeg(cvS, w, h, sg);
       const err = (fid.per_frame_mm || [])[i];
       meta.replaceChildren(
         el("b", {}, `第 ${i + 1}/${frames.length} 帧`), ` · t = ${f.timestamp}s · 阶段 ${f.phase}`,
         err != null ? el("span", { class: err <= (fid.threshold_mm || 12) ? "ok" : "bad" }, ` · 误差 ${err.toFixed(2)} mm`) : "",
-        ` · 深度 ${lo === Infinity ? "-" : `${lo.toFixed(2)}–${hi.toFixed(2)} m`}`);
+        ` · 深度 ${range ? `${range[0].toFixed(2)}–${range[1].toFixed(2)} m` : "-"}`);
       line.textContent = lines[i];
     }
     slider.addEventListener("input", () => show(+slider.value));
@@ -471,6 +486,107 @@
     if (frames.length && w) show(0);
     const first = tree.files.find((f) => f.name === "meta/fidelity.json") || tree.files[0];
     if (first) openFile(first);
+    view.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /* ------------------------------------------------------------------ embodied export */
+  async function openEmbodied(dir) {
+    let r;
+    try { r = await api(`/api/embodied?path=${encodeURIComponent(dir)}`); } catch (e) { toast(e.message); return; }
+    const info = r.info, f = info.features || {};
+    const view = el("div", { class: "episode" });
+    $("#detail").replaceChildren(
+      el("h2", {}, `具身数据集 · ${r.path}`),
+      el("div", { class: "kpis" },
+        kpi(String(info.total_episodes), "回合"), kpi(String(info.total_frames), `步（${info.fps} Hz）`),
+        kpi((info.total_frames / info.fps / 60).toFixed(1), "分钟"), kpi(String(info.total_tasks), "任务")),
+      el("p", { class: "checks" }, Object.entries(f).filter(([k]) => k.startsWith("observation") || k === "action")
+        .map(([k, v]) => el("span", {}, `${k} ${v.dtype}[${v.shape.join("×")}]`))),
+      el("p", { class: "hint" }, "每行 = 一个 200 ms 动作包：开始时的画面 + 这 200 ms 里的键鼠动作。点一行逐步查看。"),
+      table(["回合", "录像", "世界", "来源", "步数", "划分", "任务数"], r.episodes.map((e) => [
+        e.episode_index, el("span", { class: "mono", title: e.recording_id }, e.recording_id), e.world,
+        String(e.source).split(":")[0], e.length, e.split, e.tasks.length]),
+        (i) => openStep(r, r.episodes[i], view)),
+      el("details", { class: "raw" }, el("summary", {}, `${r.path}/meta/info.json 原文`), el("pre", { class: "src" }, r.info_text)),
+      el("details", { class: "raw" }, el("summary", {}, `${r.path}/meta/stats.json 原文`), el("pre", { class: "src" }, r.stats_text)),
+      view
+    );
+    $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function openStep(ds, ep, view) {
+    const PAGE = 200, pages = new Map();
+    const names = ((ds.info.features || {}).action || {}).names || [];
+    const depthShape = ((ds.info.features || {})["observation.depth"] || {}).shape;
+    async function row(i) {
+      const p = Math.floor(i / PAGE);
+      if (!pages.has(p)) {
+        pages.set(p, api(`/api/rows?path=${encodeURIComponent(ds.path)}&episode=${ep.episode_index}&start=${p * PAGE}&count=${PAGE}`));
+      }
+      const r = await pages.get(p);
+      return r.lines[i - p * PAGE];
+    }
+    const img = el("img", { alt: "observation" });
+    const cvD = depthShape ? el("canvas", { width: depthShape[1], height: depthShape[0] }) : null;
+    const cvS = depthShape ? el("canvas", { width: depthShape[1], height: depthShape[0] }) : null;
+    const slider = el("input", { type: "range", min: 0, max: ep.length - 1, value: 0, "aria-label": "步" });
+    const play = el("button", { class: "ghost small" }, "播放");
+    const meta = el("div", { class: "frame-meta" });
+    const act = el("div", { class: "act" });
+    const line = el("pre", { class: "src one" });
+    let timer = null;
+    async function show(i) {
+      slider.value = i;
+      const raw = await row(i);
+      if (+slider.value !== i || !raw) return;
+      const r = JSON.parse(raw);
+      img.src = fileUrl(`${ds.path}/${r.frames["observation.images.main"]}`);
+      if (cvD && r.frames["observation.depth"]) {
+        const [w, h] = [depthShape[1], depthShape[0]];
+        const [d, s] = await Promise.all([buf(`${ds.path}/${r.frames["observation.depth"]}`),
+          buf(`${ds.path}/${r.frames["observation.segmentation"]}`)]);
+        if (+slider.value !== i) return;
+        drawDepth(cvD, w, h, d);
+        drawSeg(cvS, w, h, s);
+      }
+      meta.replaceChildren(el("b", {}, `第 ${i + 1}/${ep.length} 步`), ` · t = ${r.timestamp}s（原录像 ${r.source_time}s）· 任务：${r.task}`,
+        r["observation.state"] ? ` · 位姿 [${r["observation.state"].map((v) => v.toFixed(2)).join(", ")}]` : "");
+      const held = names.map((n, k) => [n, r.action[k]]).filter(([n, v]) => n.startsWith("key.") && v > 0);
+      const mouse = (v, lim) => {
+        const fill = el("i");
+        fill.style.width = `${Math.min(50, Math.abs(v) / lim * 50)}%`;
+        fill.style.left = v < 0 ? `${50 - Math.min(50, Math.abs(v) / lim * 50)}%` : "50%";
+        return el("span", { class: "axis" }, fill);
+      };
+      act.replaceChildren(
+        el("div", {}, el("small", {}, "mouse_dx"), mouse(r.action[0], 1000), el("code", {}, r.action[0])),
+        el("div", {}, el("small", {}, "mouse_dy"), mouse(r.action[1], 1000), el("code", {}, r.action[1])),
+        el("div", {}, el("small", {}, "wheel"), mouse(r.action[2], 5), el("code", {}, r.action[2])),
+        el("div", { class: "keys" }, el("small", {}, "按住的键（6 个 33 ms 槽里的占比）"),
+          held.length ? held.map(([n, v]) => el("span", { class: "key" }, n.slice(4), el("small", {}, ` ${Math.round(v * 6)}/6`))) : el("span", { class: "hint" }, "无")),
+        el("div", { class: "keys" }, el("small", {}, "action.text"), el("code", {}, r["action.text"])));
+      line.textContent = raw;
+    }
+    slider.addEventListener("input", () => show(+slider.value));
+    play.addEventListener("click", () => {
+      if (timer) { clearInterval(timer); timer = null; play.textContent = "播放"; return; }
+      play.textContent = "暂停";
+      timer = setInterval(() => {
+        if (!view.isConnected) { clearInterval(timer); return; }
+        show((+slider.value + 1) % ep.length);
+      }, 1000 / (ds.info.fps || 5));
+    });
+    const chans = [el("figure", { class: "chan wide" }, img, el("figcaption", {}, el("b", {}, "observation.images.main"), " PNG"))];
+    if (cvD) {
+      chans.push(el("figure", { class: "chan" }, cvD, el("figcaption", {}, el("b", {}, "observation.depth"), " .f32")),
+        el("figure", { class: "chan" }, cvS, el("figcaption", {}, el("b", {}, "observation.segmentation"), " .u16")));
+    }
+    view.replaceChildren(
+      el("h3", {}, `回合 ${ep.episode_index} · ${ep.recording_id} · ${ep.world}`),
+      el("div", { class: "player" }, el("div", { class: `chans emb${cvD ? "" : " solo"}` }, chans),
+        el("div", { class: "scrub" }, play, slider), meta, act,
+        el("p", { class: "hint" }, `这一步在 data/…/episode_${String(ep.episode_index).padStart(6, "0")}.jsonl 里的原始一行：`), line));
+    show(0);
     view.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 

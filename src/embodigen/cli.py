@@ -1,7 +1,7 @@
 """Command line.
 
 Robot track:          gen | validate | preview | index
-Virtual-world track:  worlds | rollout | fetch | ingest | curate | build | ledger | llm
+Virtual-world track:  worlds | rollout | fetch | ingest | curate | build | export | ledger | llm
 Both:                 backends | ui (a local web console for all of the above)
 """
 
@@ -48,6 +48,9 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     print(f"attempts     {episode.provenance.attempts} (seeds {episode.provenance.seeds})")
     print(f"fidelity     p95 {rep.p95_error_mm:8.2f} mm  max {rep.max_error_mm:8.2f} mm"
           f"  threshold {rep.threshold_mm:g} mm  -> {'PASS' if rep.passed else 'FAIL'}")
+    if rep.p95_error_mm == float("inf"):
+        print("             (not measurable: the validator could not find the keypoints in the rendered "
+              "frames; at this --resolution they are too small, try 24 or more)")
     if episode.scene.notes:
         print(f"scene notes  {'; '.join(episode.scene.notes)}")
     if hasattr(episode, "root"):
@@ -143,12 +146,20 @@ def _cmd_worlds(args: argparse.Namespace) -> int:
 
 def _size(text: str) -> tuple[int, int]:
     w, _, h = text.lower().partition("x")
-    return int(w), int(h or w)
+    try:
+        size = int(w), int(h or w)
+    except ValueError:
+        raise SystemExit(f"bad size {text!r}: expected WxH, e.g. 160x100") from None
+    if min(size) < 8:
+        raise SystemExit(f"bad size {text!r}: both sides must be at least 8 px")
+    return size
 
 
 def _cmd_rollout(args: argparse.Namespace) -> int:
     from embodigen.gameplay.pipeline import default_workers, run_rollouts
 
+    if args.episodes < 1 or args.seconds <= 0 or args.streams < 1:
+        raise SystemExit("--episodes and --streams must be at least 1, --seconds above 0")
     registry = _registry(args)
     worlds = [w.strip() for w in args.world.split(",") if w.strip()]
     if worlds == ["all"]:
@@ -175,6 +186,12 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         hint = f"  split={row['split_hint']}" if row["split_hint"] else ""
         print(f"  {row['recording_id']:40s} {row['duration']:7.1f}s  {row['stream']}{hint}")
     print(f"ingested     {len(rows)} {args.source} recordings -> {args.out}")
+    if not rows:
+        expect = {"vpt": "<name>.jsonl action logs (with <name>.mp4 beside them for video)",
+                  "d2e": "<name>.mcap files (with <name>.mkv beside them for video)",
+                  "p2p": "one folder per recording holding annotation.proto"}.get(args.source, "its recordings")
+        print(f"nothing found under {args.input}: {args.source} expects {expect} (searched recursively)",
+              file=sys.stderr)
     return 0 if rows else 1
 
 
@@ -214,6 +231,26 @@ def _cmd_build(args: argparse.Namespace) -> int:
     out = Path(args.out) / study.name if not args.flat else Path(args.out)
     build(Path(args.curated), study, _registry(args), out, annotator_name=args.annotator)
     _print_ledger(out / "ledger.json")
+    return 0
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    from embodigen.gameplay.export import ACTION_NAMES, export
+    from embodigen.gameplay.pipeline import default_workers
+
+    worlds = {w.strip() for w in args.worlds.split(",") if w.strip()} if args.worlds else None
+    r = export(Path(args.curated), Path(args.out), worlds=worlds, width=args.width,
+               video_backend=args.video_backend, workers=args.workers or default_workers(),
+               overwrite=args.overwrite, registry=_registry(args), size=_size(args.size) if args.size else None)
+    print(f"episodes     {r['episodes']} ({', '.join(f'{k} {v}' for k, v in r['splits'].items())}), "
+          f"{r['frames']} steps @ 5 Hz = {r['minutes']} min, {r['tasks']} tasks")
+    print(f"worlds       {', '.join(r['worlds'])}")
+    extra = [name for name, on in (("observation.state", r["state"]), ("observation.depth", r["depth"]),
+                                   ("observation.segmentation", r["segmentation"])) if on]
+    print(f"features     observation.images.main {r['size'][0]}x{r['size'][1]}, action[{len(ACTION_NAMES)}]"
+          + "".join(f", {x}" for x in extra))
+    print(f"rows         JSONL{' + parquet' if r['parquet'] else ' (pip install pyarrow for parquet)'}")
+    print(f"written      {r['out']}")
     return 0
 
 
@@ -459,6 +496,19 @@ def build_parser() -> argparse.ArgumentParser:
     bu.add_argument("--flat", action="store_true", help="write directly into --out")
     bu.add_argument("--annotator", default=None, help="override the study's annotator backend (mock | llm)")
     bu.set_defaults(func=_cmd_build)
+
+    ex = sub.add_parser("export", parents=[wd],
+                        help="write certified recordings as an embodied (LeRobot-shaped) dataset")
+    ex.add_argument("--curated", default="data/curated")
+    ex.add_argument("--out", default="data/embodied")
+    ex.add_argument("--worlds", default="", help="comma-separated world labels (default: all certified)")
+    ex.add_argument("--width", type=int, default=320,
+                    help="frame width when sources differ or come from video (height = 9/16 of it)")
+    ex.add_argument("--size", default="", help="force every frame to WxH (letterboxed); default: see --width")
+    ex.add_argument("--video-backend", default="pyav", help="decoder for frames kept in videos (pyav)")
+    ex.add_argument("--overwrite", action="store_true", help="replace an earlier export in --out")
+    ex.add_argument("--workers", "-j", type=int, default=0)
+    ex.set_defaults(func=_cmd_export)
 
     llm = sub.add_parser("llm", help="cloud model settings for the llm annotator (API key first)")
     llm_sub = llm.add_subparsers(dest="llm_command", required=True)

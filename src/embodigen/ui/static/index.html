@@ -143,6 +143,21 @@
           <div class="cmd" data-plan></div>
           <button class="run">构建</button>
         </form>
+
+        <form class="card" data-action="export">
+          <h2><i>5</i>导出具身格式</h2>
+          <p>把筛选通过的录像写成 LeRobot 形状的数据集：每 200 ms 一步，画面 + 数值动作向量（鼠标位移、滚轮、各键按住占比），引擎世界还带位姿、深度和分割。</p>
+          <label>筛选结果目录 <input name="curated" value="data/curated" list="dl-curated" /></label>
+          <label>输出到 <input name="out" value="data/embodied" /></label>
+          <label><span class="lab">只导出这些世界<span class="opt">可选，逗号分隔</span></span>
+            <input name="worlds" placeholder="raycast-arena,minecraft" /></label>
+          <label><span class="lab">画面尺寸<span class="opt">可选，默认自动</span></span>
+            <input name="size" placeholder="320x180" /></label>
+          <label class="check"><input type="checkbox" name="overwrite" /> 覆盖之前的导出</label>
+          <p class="warn" data-need="video" hidden>帧在视频里的数据集（VPT、D2E、P2P）需要视频解码：<code>pip install -e '.[video]'</code>。</p>
+          <div class="cmd" data-plan></div>
+          <button class="run">导出</button>
+        </form>
       </div>
     </section>
 

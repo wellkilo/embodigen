@@ -1,4 +1,4 @@
-.PHONY: install test demo batch preview docs worlds samples ui clean
+.PHONY: install test demo batch preview docs worlds samples embodied ui clean
 
 install:
 	pip install -e .
@@ -38,6 +38,11 @@ samples:
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source p2p --input data/samples/p2p --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli curate --raw data/samples-raw --out data/samples-curated
 	PYTHONPATH=src python3 -m embodigen.cli build --curated data/samples-curated --study configs/studies/public-samples.toml --out data/samples-mixes
+
+# Certified recordings as embodied (LeRobot-shaped) datasets; run after `make worlds` / `make samples`.
+embodied:
+	PYTHONPATH=src python3 -m embodigen.cli export --curated data/curated --out data/embodied --overwrite
+	if [ -f data/samples-curated/ledger.json ]; then PYTHONPATH=src python3 -m embodigen.cli export --curated data/samples-curated --out data/samples-embodied --overwrite; fi
 
 # Local web console for every step above (prints a link with an access token).
 ui:
