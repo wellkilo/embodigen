@@ -24,7 +24,7 @@ episode per recording, one row per 200 ms action packet::
   |wheel| <= 5), after the source's mouse scale and any realignment;
 * ``key.<name>`` for every key in ``actions.KEY_ORDER``: the fraction of the six 33 ms
   slots in which it is held (0, 1/6, ... 1);
-* ``key.other``: the same for keys outside that list.
+* ``key.other``: the fraction of slots holding any key outside that list.
 
 The vector drops the order of keys inside the 200 ms; the row keeps it, and the
 exact GameScaling text: ``action.keys`` (six slots) and ``action.text``
@@ -51,11 +51,13 @@ from pathlib import Path
 from typing import Any
 
 from embodigen.gameplay.actions import CHUNK_S, KEY_ORDER, OBS_HZ, SUBSTEPS, encode_action, turn_from_json
+from embodigen.gameplay.pipeline import _jsonl, _write_json
 from embodigen.gameplay.registry import WorldRegistry
+from embodigen.gameplay.splits import session_of
 from embodigen.gameplay.video import capture_aspect, fit_size, split_ref, video_reader
 from embodigen.pngio import encode_png, read_png
 
-FORMAT = "lerobot-v2.1-shaped"
+FORMAT = "embodigen-lerobot-shaped-v1"  # keys follow LeRobot v2.1; not loadable by LeRobotDataset as is
 CHUNKS_SIZE = 1000
 DECODE_BATCH = 64
 IMAGE = "observation.images.main"
@@ -70,8 +72,11 @@ _OTHER = len(ACTION_NAMES) - 1
 def action_vector(dx: int, dy: int, dz: int, keys: list[list[str]]) -> list[float]:
     vec = [float(dx), float(dy), float(dz)] + [0.0] * (len(ACTION_NAMES) - 3)
     for slot in keys:
-        for key in set(slot):
-            vec[_KEY_INDEX.get(key, _OTHER)] += 1.0 / SUBSTEPS
+        known = {k for k in slot if k in _KEY_INDEX}
+        for key in known:
+            vec[_KEY_INDEX[key]] += 1.0 / SUBSTEPS
+        if len(known) < len(set(slot)):  # once per slot, however many unlisted keys
+            vec[_OTHER] += 1.0 / SUBSTEPS
     return [round(v, 6) for v in vec]
 
 
@@ -90,10 +95,12 @@ def pose(state: dict[str, Any] | None) -> list[float] | None:
     return None
 
 
-def _png_size(path: Path) -> tuple[int, int]:
+def _png_header(path: Path) -> tuple[int, int, bool]:
+    """(width, height, whether the pixels are already 8-bit RGB) from the IHDR chunk."""
     with path.open("rb") as fh:
-        head = fh.read(24)
-    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+        head = fh.read(26)
+    rgb8 = head[24] == 8 and head[25] == 2  # bit depth 8, colour type 2
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big"), rgb8
 
 
 def letterbox(w: int, h: int, rgb: bytes, width: int, height: int) -> bytes:
@@ -111,14 +118,6 @@ def letterbox(w: int, h: int, rgb: bytes, width: int, height: int) -> bytes:
     blank = b"\0" * (width * 3)
     body = b"".join(pad_l + rgb[y * fw * 3 : (y + 1) * fw * 3] + pad_r for y in range(fh))
     return blank * top + body + blank * (height - fh - top)
-
-
-def _jsonl(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _task(world_title: str, state: dict[str, Any] | None) -> str:
@@ -147,8 +146,12 @@ def plan(curated: Path, worlds: set[str] | None = None) -> tuple[Path, list[dict
         rows = [r for r in rows if r["world"] in worlds]
     if not rows:
         raise SystemExit(f"no certified recordings in {curated}; nothing to export")
-    # held-out recordings last, so each split is one contiguous episode range
-    rows.sort(key=lambda r: (r.get("split_hint") in ("val", "test"), r["recording_id"]))
+    # Same rule as splits.split: a source's "val" tag holds out its whole session.
+    # Held-out recordings go last, so each split is one contiguous episode range.
+    held = {session_of(r) for r in rows if r.get("split_hint") == "val"}
+    for r in rows:
+        r["_split"] = "val" if session_of(r) in held else "train"
+    rows.sort(key=lambda r: (r["_split"] == "val", r["recording_id"]))
     return raw_root, rows
 
 
@@ -193,7 +196,7 @@ def _episode(job: dict[str, Any]) -> dict[str, Any]:
         image = img_dir / f"{name}.png"
         if split_ref(turn.frame)[1] is None:
             W, H = job["size"]
-            if _png_size(raw / turn.frame) == (W, H):
+            if _png_header(raw / turn.frame) == (W, H, True):
                 shutil.copyfile(raw / turn.frame, image)
             else:
                 w, h, c, px = read_png(raw / turn.frame)
@@ -266,19 +269,21 @@ def _maybe_parquet(out: Path, ep: int, rows: list[dict[str, Any]], with_state: b
 
 
 def frame_size(curated: Path, raw_root: Path, rows: list[dict[str, Any]], need_video: list[str],
-               width: int) -> tuple[int, int]:
-    """One frame size for the whole dataset: the engine frames' own size when no
-    video is involved and they agree, else ``width`` at 16:9 (the capture shape of
-    every public dataset here); other frames are letterboxed into it."""
+               width: int) -> tuple[tuple[int, int], bool]:
+    """One frame size for the whole dataset, and whether it is every frame's own.
+
+    The engine frames' size when no video is involved and they all agree; else
+    ``width`` at 16:9 (the capture shape of every public dataset here), with
+    other frames letterboxed into it."""
     if not need_video:
         sizes = set()
         for row in rows:
             with (curated / row["turns_file"]).open(encoding="utf-8") as fh:
                 frame = json.loads(fh.readline())["frame"]
-            sizes.add(_png_size(raw_root / row["raw_dir"] / frame))
+            sizes.add(_png_header(raw_root / row["raw_dir"] / frame)[:2])
         if len(sizes) == 1:
-            return sizes.pop()
-    return width, round(width * 9 / 16)
+            return sizes.pop(), True
+    return (width, round(width * 9 / 16)), False
 
 
 def export(curated: Path, out: Path, worlds: set[str] | None = None, width: int = 320,
@@ -295,18 +300,39 @@ def export(curated: Path, out: Path, worlds: set[str] | None = None, width: int 
                 f"{len(need)} recording(s) keep their frames inside videos ({', '.join(need[:3])}"
                 f"{', ...' if len(need) > 3 else ''}): {why}\n"
                 "or export only engine worlds with --worlds.")
-    if out.exists() and any(out.iterdir()):
+    replace = out.exists() and any(out.iterdir())
+    if replace:
         if not overwrite:
             raise SystemExit(f"{out} is not empty; pass --overwrite to replace an earlier export")
-        if not (out / "meta" / "info.json").exists():
-            raise SystemExit(f"{out} is not empty and is not an export; refusing to delete it")
-        shutil.rmtree(out)
-    out.mkdir(parents=True, exist_ok=True)
+        try:
+            ours = json.loads((out / "meta" / "info.json").read_text(encoding="utf-8")).get("format") == FORMAT
+        except (OSError, ValueError):
+            ours = False
+        if not ours:  # e.g. a downloaded LeRobot dataset, which also has meta/info.json
+            raise SystemExit(f"{out} is not empty and was not written by `embodigen export`; refusing to delete it")
+    # Build beside the target and swap at the end: a failed run leaves the old export intact.
+    final, out = out, out.parent / f".{out.name}.partial"
+    if out.exists():
+        shutil.rmtree(out)  # leftovers of a crashed run, by this name only ours
+    out.mkdir(parents=True)
+    try:
+        result = _write(curated, out, raw_root, rows, need, width, size, video_backend, workers, registry)
+    except BaseException:
+        shutil.rmtree(out, ignore_errors=True)
+        raise
+    if final.exists():
+        shutil.rmtree(final) if replace else final.rmdir()
+    out.rename(final)
+    return {**result, "out": str(final)}
 
+
+def _write(curated: Path, out: Path, raw_root: Path, rows: list[dict[str, Any]], need: list[str], width: int,
+           size: tuple[int, int] | None, video_backend: str, workers: int,
+           registry: WorldRegistry | None) -> dict[str, Any]:
     registry = registry or WorldRegistry.load()
-    auto = frame_size(curated, raw_root, rows, need, width)
+    auto, uniform = frame_size(curated, raw_root, rows, need, width)
     size = size or auto
-    native = not need and size == auto  # engine frames copied as is, so depth/seg pixels line up
+    native = uniform and size == auto  # every engine frame copied as is, so depth/seg pixels line up
     jobs = [{"out": str(out), "curated": str(curated), "raw": str(raw_root / row["raw_dir"]), "row": row,
              "episode_index": ep, "title": registry.get(row["world"]).title, "size": size,
              "native": native, "video_backend": video_backend} for ep, row in enumerate(rows)]
@@ -340,7 +366,7 @@ def export(curated: Path, out: Path, worlds: set[str] | None = None, width: int 
             "tasks": list(dict.fromkeys(r["task"] for r in d["rows"])),
             "length": len(d["rows"]),
             "recording_id": row["recording_id"], "world": row["world"], "source": row["source"],
-            "session": row.get("session", ""), "split": "val" if row.get("split_hint") in ("val", "test") else "train",
+            "session": session_of(row), "split": row["_split"],
             "realigned_ms": row.get("realigned_ms", 0.0),
         })
 
@@ -369,10 +395,10 @@ def export(curated: Path, out: Path, worlds: set[str] | None = None, width: int 
         features[SEG] = {"dtype": "uint16", "shape": [h, w], "names": ["height", "width"],
                          "info": "raw little-endian uint16 instance ids, engine truth (.u16)"}
     info = {
-        "codebase_version": "v2.1",
+        "codebase_version": FORMAT,  # not "v2.1": LeRobotDataset should refuse it rather than misread it
         "format": FORMAT,
         "robot_type": "keyboard_mouse",
-        "fps": OBS_HZ,
+        "fps": int(OBS_HZ),
         "total_episodes": len(episodes),
         "total_frames": total,
         "total_tasks": len(tasks),
@@ -387,10 +413,10 @@ def export(curated: Path, out: Path, worlds: set[str] | None = None, width: int 
         "source": {"curated": str(curated.resolve()), "raw_root": str(raw_root),
                    "worlds": sorted({e["world"] for e in episodes})},
         "note": ("One row per 200 ms GameScaling action packet: the frame at its start and the keyboard/mouse "
-                 "action during it. JSONL rows are always written; parquet only with pyarrow ([lerobot] extra). "
-                 "action.keys / action.text keep the exact slots the vector summarises."),
+                 "action during it. Keys follow LeRobot v2.1, but frames are PNG files referenced by path, rows "
+                 "are JSONL (parquet only with pyarrow) and there is no episodes_stats.jsonl, so LeRobotDataset "
+                 "needs a conversion first. action.keys / action.text keep the exact slots the vector summarises."),
     }
-    (out / "meta").mkdir(exist_ok=True)
     _write_json(out / "meta" / "info.json", info)
     with (out / "meta" / "episodes.jsonl").open("w", encoding="utf-8") as fh:
         for e in episodes:

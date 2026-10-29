@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 
 from embodigen.gameplay.actions import KEY_ORDER, decode_action
-from embodigen.gameplay.export import ACTION_NAMES, export, letterbox, pose
+from embodigen.gameplay.export import ACTION_NAMES, FORMAT, action_vector, export, letterbox, pose
 from embodigen.gameplay.pipeline import curate, run_rollouts
 from embodigen.gameplay.registry import WorldRegistry
-from embodigen.pngio import read_png
+from embodigen.pngio import read_png, write_png
 
 
 def jsonl(path: Path) -> list[dict]:
@@ -117,6 +117,44 @@ class ExportTest(unittest.TestCase):
             export(self.curated, other, overwrite=True, registry=self.registry)
         self.assertTrue((other / "keep.txt").exists())
 
+    def test_overwrite_spares_other_lerobot_datasets_and_failed_runs_keep_the_old_export(self):
+        foreign = self.tmp / "aloha"
+        (foreign / "meta").mkdir(parents=True)
+        (foreign / "meta" / "info.json").write_text(json.dumps({"codebase_version": "v2.1"}))
+        with self.assertRaises(SystemExit):
+            export(self.curated, foreign, overwrite=True, registry=self.registry)
+        self.assertTrue((foreign / "meta" / "info.json").exists())
+
+        out = self.tmp / "swap"
+        export(self.curated, out, worlds={"raycast-maze"}, registry=self.registry)
+        self.assertEqual(json.loads((out / "meta" / "info.json").read_text())["format"], FORMAT)
+        broken = self.tmp / "curated-broken"
+        shutil.copytree(self.curated, broken)
+        maze = next(r for r in self.rows if r["world"] == "raycast-maze" and r["passed"])
+        raw_frame = Path(json.loads((broken / "ledger.json").read_text())["raw_root"]) / maze["raw_dir"]
+        turns = broken / "turns" / f"{maze['recording_id']}.jsonl"
+        rows = jsonl(turns)
+        rows[5]["frame"] = "frames/missing.png"
+        turns.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        with self.assertRaises(OSError):
+            export(broken, out, worlds={"raycast-maze"}, overwrite=True, registry=self.registry)
+        self.assertTrue((out / "meta" / "info.json").exists(), "the previous export must survive")
+        self.assertFalse((self.tmp / ".swap.partial").exists())
+        self.assertTrue(raw_frame.exists())
+        export(self.curated, out, worlds={"raycast-maze"}, overwrite=True, registry=self.registry)  # and can be redone
+
+    def test_mixed_engine_sizes_letterbox_and_leave_out_depth(self):
+        raw, cur = self.tmp / "raw-mixed", self.tmp / "curated-mixed"
+        run_rollouts(self.registry, ["raycast-arena"], 1, 4.0, raw, size=(48, 30))
+        run_rollouts(self.registry, ["raycast-maze"], 1, 4.0, raw, seed=5, size=(64, 40))
+        curate(raw, cur)
+        out = self.tmp / "mixed"
+        r = export(cur, out, registry=self.registry, width=96)
+        self.assertEqual(r["size"], [96, 54])
+        self.assertFalse(r["depth"] or r["segmentation"])
+        self.assertNotIn("observation.depth", json.loads((out / "meta" / "info.json").read_text())["features"])
+        self.assertFalse((out / "images" / "observation.depth").exists())
+
     def test_video_frames_without_a_decoder_stop_before_writing(self):
         cur = self.tmp / "curated-video"
         shutil.copytree(self.curated, cur)
@@ -131,7 +169,43 @@ class ExportTest(unittest.TestCase):
         self.assertFalse(out.exists())
 
 
+class SessionSplitTest(unittest.TestCase):
+    def test_a_val_tag_holds_out_the_whole_session(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        registry = WorldRegistry.load()
+        raw, cur = tmp / "raw", tmp / "cur"
+        run_rollouts(registry, ["raycast-arena"], 3, 4.0, raw, size=(32, 20))
+        curate(raw, cur)
+        rows = jsonl(cur / "recordings.jsonl")
+        for r in rows:  # two parts of one session, only one tagged val; a third, untagged session
+            r["session"] = "s1" if r["recording_id"].endswith(("0000", "0001")) else "s2"
+            r["split_hint"] = "val" if r["recording_id"].endswith("0000") else ""
+        (cur / "recordings.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        out = tmp / "out"
+        r = export(cur, out, registry=registry)
+        eps = jsonl(out / "meta" / "episodes.jsonl")
+        self.assertEqual({e["recording_id"][-4:]: e["split"] for e in eps}, {"0000": "val", "0001": "val", "0002": "train"})
+        self.assertEqual(r["splits"], {"train": "0:1", "val": "1:3"})
+        self.assertEqual([e["split"] for e in eps], ["train", "val", "val"])
+
+
 class HelpersTest(unittest.TestCase):
+    def test_unlisted_keys_count_once_per_slot(self):
+        vec = action_vector(0, 0, 0, [["f13", "f14", "w"]] * 3 + [[]] * 3)
+        self.assertAlmostEqual(vec[-1], 0.5)
+        self.assertAlmostEqual(vec[3], 0.5)  # w
+        self.assertLessEqual(max(action_vector(0, 0, 0, [["f13", "f14", "f15"]] * 6)[3:]), 1.0)
+
+    def test_rgba_frames_at_the_dataset_size_are_converted_not_copied(self):
+        from embodigen.gameplay.export import _png_header
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        write_png(tmp / "rgba.png", 4, 2, b"\x10\x20\x30\xff" * 8, channels=4)
+        write_png(tmp / "rgb.png", 4, 2, b"\x10\x20\x30" * 8)
+        self.assertEqual(_png_header(tmp / "rgba.png"), (4, 2, False))
+        self.assertEqual(_png_header(tmp / "rgb.png"), (4, 2, True))
+
     def test_pose_puts_height_on_z(self):
         self.assertEqual(pose({"pose": [10.0, 64.0, -3.0, 90.0, -5.0]}), [10.0, -3.0, 64.0, 90.0, -5.0])
         self.assertEqual(pose({"pos": [1.0, 2.0], "yaw": 30.0}), [1.0, 2.0, 0.0, 30.0, 0.0])
