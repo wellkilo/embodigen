@@ -2,7 +2,7 @@
 
 Robot track:          gen | validate | preview | index
 Virtual-world track:  worlds | rollout | fetch | ingest | curate | build | export | ledger | llm
-Both:                 backends | ui (a local web console for all of the above)
+Both:                 world (4D Gaussian-splat worlds) | backends | ui (a local web console for all of the above)
 """
 
 from __future__ import annotations
@@ -251,6 +251,49 @@ def _cmd_export(args: argparse.Namespace) -> int:
           + "".join(f", {x}" for x in extra))
     print(f"rows         JSONL{' + parquet' if r['parquet'] else ' (pip install pyarrow for parquet)'}")
     print(f"written      {r['out']}")
+    return 0
+
+
+def _cmd_world(args: argparse.Namespace) -> int:
+    from embodigen.world4d.world import write_world
+
+    sources = [bool(args.task), bool(args.episode), bool(args.recording), bool(args.rollout)]
+    if sum(sources) != 1:
+        raise SystemExit("give exactly one of --task, --episode, --recording, --rollout")
+    if args.task:  # prompt -> scene -> exact episode -> splats
+        from embodigen.world4d.robot import episode_world
+
+        cfg = PipelineConfig(out_dir=Path(args.work) / "robot", resolution=args.resolution, seed=args.seed,
+                             inject_drift_mm=0.0)
+        episode = Pipeline(cfg).run(args.task, robot_name=args.robot)
+        if not episode.fidelity.passed:
+            raise SystemExit(f"episode {episode.episode_id} failed the fidelity gate "
+                             f"(p95 {episode.fidelity.p95_error_mm:.2f} mm); no world from rejected data")
+        print(f"episode      {episode.root} (p95 {episode.fidelity.p95_error_mm:.2f} mm, certified)")
+        world = episode_world(Path(episode.root), spacing=args.spacing)
+    elif args.episode:
+        from embodigen.world4d.robot import episode_world
+
+        world = episode_world(Path(args.episode), spacing=args.spacing)
+    else:
+        from embodigen.world4d.game import recording_world
+
+        raw = Path(args.recording) if args.recording else None
+        if args.rollout:  # a world label -> one scripted rollout with engine truth
+            from embodigen.gameplay.pipeline import run_rollouts
+
+            rows = run_rollouts(_registry(args), [args.rollout], 1, args.seconds, Path(args.work) / "raw",
+                                seed=args.seed, size=_size(args.size), gt=True)
+            raw = Path(args.work) / "raw" / rows[0]["recording_id"]
+            print(f"recording    {raw} ({rows[0]['duration']:.0f} s)")
+        world = recording_world(raw, voxel=args.voxel, stride=args.stride, ceiling=args.ceiling,
+                                registry=_registry(args))
+    out = Path(args.out) if args.out else Path("data/worlds") / world.name
+    r = write_world(world, out, ply=args.ply)
+    print(f"world        {world.name}: {r['frames']} frames @ {world.fps:g} fps")
+    print(f"splats       {r['static']} static + up to {r['dynamic_max']} dynamic per frame")
+    print(f"files        world.json, static.splat, dynamic/*.splat, {r['ply']} PLY ({r['bytes'] / 1e6:.1f} MB)")
+    print(f"written      {r['out']}  (view: embodigen ui -> 4D 世界; PLY opens in SuperSplat)")
     return 0
 
 
@@ -509,6 +552,26 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--overwrite", action="store_true", help="replace an earlier export in --out")
     ex.add_argument("--workers", "-j", type=int, default=0)
     ex.set_defaults(func=_cmd_export)
+
+    wo = sub.add_parser("world", parents=[wd], help="build a 4D Gaussian-splat world from a prompt or a recording")
+    wo.add_argument("--task", help="prompt: generate a robot episode for it, then its world")
+    wo.add_argument("--episode", help="a packed robot episode directory")
+    wo.add_argument("--recording", help="a raycast rollout with engine depth (data/raw/<id>)")
+    wo.add_argument("--rollout", help="a raycast world label: record one rollout, then its world")
+    wo.add_argument("--out", help="default: data/worlds/<name>")
+    wo.add_argument("--work", default="data/worlds/_work", help="where --task / --rollout keep their episode")
+    wo.add_argument("--robot", default="franka")
+    wo.add_argument("--resolution", type=int, default=64, help="--task: render size used for the fidelity gate")
+    wo.add_argument("--seed", type=int, default=0)
+    wo.add_argument("--seconds", type=float, default=20.0, help="--rollout length")
+    wo.add_argument("--size", default="160x100", help="--rollout frame size")
+    wo.add_argument("--spacing", type=float, default=0.006, help="robot: surfel spacing in metres")
+    wo.add_argument("--voxel", type=float, default=0.06, help="game: merge grid for static splats, metres")
+    wo.add_argument("--stride", type=int, default=1, help="game: lift every n-th pixel")
+    wo.add_argument("--ceiling", action="store_true", help="game: keep the ceiling (hides the level from above)")
+    wo.add_argument("--ply", default="auto", choices=("auto", "all", "first", "none"),
+                    help="3DGS PLY per frame (auto: every frame up to ~64 MB, else the first)")
+    wo.set_defaults(func=_cmd_world)
 
     llm = sub.add_parser("llm", help="cloud model settings for the llm annotator (API key first)")
     llm_sub = llm.add_subparsers(dest="llm_command", required=True)

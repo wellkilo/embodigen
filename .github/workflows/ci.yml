@@ -37,6 +37,8 @@ jobs:
           embodigen build --curated data/curated --study configs/studies/reference.toml --out data/mixes
           embodigen ledger data/mixes/reference
           embodigen export --curated data/curated --out data/embodied
+          embodigen world --recording data/raw/raycast-arena-0000 --ply first
+          embodigen world --task "把红色方块放进盒子" --resolution 48 --ply first
           embodigen preview --recording data/raw/raycast-arena-0000 --max-frames 6
           embodigen ui --help > /dev/null && embodigen fetch --help > /dev/null
 

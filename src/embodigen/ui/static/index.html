@@ -20,6 +20,7 @@
     <button data-tab="data">数据与结果</button>
     <button data-tab="model">模型设置<span class="dot" id="model-dot"></span></button>
     <button data-tab="robot">机器人</button>
+    <button data-tab="world">4D 世界</button>
   </nav>
 
   <main>
@@ -37,14 +38,14 @@
       <div class="cards">
         <form class="card" data-action="preset-worlds">
           <h2>参考世界</h2>
-          <p>在 7 个内置的光线投射小世界里录制 32 段操作，故意混入挂机、300 ms 错位和时钟漂移各一段，再筛选、构建。不用下载，几分钟跑完。</p>
+          <p>在 7 个内置的光线投射小世界里录制 32 段操作，故意混入挂机、300 ms 错位和时钟漂移各一段，再筛选、构建训练集，并导出具身格式（LeRobot 形状）。不用下载，几分钟跑完。</p>
           <p class="hint">完成后：30/32 通过，错位那段显示 <code>realigned +300 ms</code>。</p>
           <div class="cmd" data-plan></div>
           <button class="run">运行</button>
         </form>
         <form class="card" data-action="preset-samples">
           <h2>公开样例</h2>
-          <p>下载 VPT、D2E、Open-P2P 各 3 段真人录像，转换、筛选、构建一个迷你训练集。</p>
+          <p>下载 VPT、D2E、Open-P2P 各 3 段真人录像，转换、筛选、构建一个迷你训练集；勾选视频时再导出具身格式。</p>
           <label class="check"><input type="checkbox" name="video" /> 同时下载视频（约 0.9 GB，用于从画面检查对齐）</label>
           <p class="warn" data-need="video" hidden>未安装视频解码：<code>pip install -e '.[video]'</code>，否则对齐检查会跳过。</p>
           <label><span class="lab">Hugging Face 镜像<span class="opt">可选</span></span>
@@ -192,6 +193,78 @@
       </form>
     </section>
 
+    <!-- 4D worlds -->
+    <section data-page="world" class="page">
+      <h1>4D 世界</h1>
+      <p class="lede">把管线里的精确几何变成 3D 高斯（3DGS）随时间变化的世界，在浏览器里播放、环绕、编辑。机器人场景从任务描述直接生成，按真实的盒子和球体表面采样；游戏世界用引擎的深度和玩家位姿逐帧抬升。不在本机跑任何模型。</p>
+      <div class="cards">
+        <form class="card" data-action="world">
+          <input type="hidden" name="source" value="task" />
+          <h2>从任务描述生成</h2>
+          <p>任务 → 场景 → 通过保真度闸门的回合 → 3D 高斯。桌面、盒子是静态层；方块和夹爪每帧移动。</p>
+          <label>任务 <input name="task" value="把红色方块放进盒子" /></label>
+          <div class="row">
+            <label>机器人 <select name="robot" id="world-robot"></select></label>
+            <label>随机种子 <input name="seed" type="number" min="0" value="0" /></label>
+          </div>
+          <div class="cmd" data-plan></div>
+          <button class="run">生成</button>
+        </form>
+        <form class="card" data-action="world">
+          <input type="hidden" name="source" value="rollout" />
+          <h2>从游戏世界生成</h2>
+          <p>在内置光线投射世界里录一段，再用引擎深度和玩家位姿抬升：墙和地面合并为静态层，敌人、道具逐帧出现。</p>
+          <div class="row">
+            <label>世界 <select name="world" id="world-rollout"></select></label>
+            <label>秒数 <input name="seconds" type="number" min="2" max="300" value="20" /></label>
+          </div>
+          <label>随机种子 <input name="seed" type="number" min="0" value="0" /></label>
+          <label class="check"><input type="checkbox" name="ceiling" /> 保留天花板（俯视时会挡住关卡）</label>
+          <div class="cmd" data-plan></div>
+          <button class="run">生成</button>
+        </form>
+        <form class="card" data-action="world">
+          <h2>从已有数据生成</h2>
+          <label>来源
+            <select name="source"><option value="recording">游戏录像（带引擎深度）</option><option value="episode">机器人回合</option></select>
+          </label>
+          <label>目录 <input name="path" placeholder="data/raw/raycast-arena-0000 或 out/episodes/franka-0000" /></label>
+          <div class="cmd" data-plan></div>
+          <button class="run">生成</button>
+        </form>
+      </div>
+      <h2 class="sub">已生成的世界 <button class="link" id="world-rescan">刷新</button></h2>
+      <ul class="dsets" id="world-list"></ul>
+      <div class="viewer4d" id="viewer4d" hidden>
+        <div class="v4-head">
+          <b id="v4-title"></b>
+          <span class="hint" id="v4-info"></span>
+        </div>
+        <div class="v4-stage"><canvas id="v4-canvas" aria-label="4D 世界"></canvas><div class="v4-hud" id="v4-hud"></div></div>
+        <div class="scrub">
+          <button class="ghost small" id="v4-play">播放</button>
+          <input type="range" id="v4-frame" min="0" max="0" value="0" aria-label="帧" />
+          <select id="v4-speed" aria-label="速度"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+        </div>
+        <div class="v4-tools">
+          <span class="seg" role="group" aria-label="视角">
+            <button class="ghost small on" data-mode="orbit">自由环绕</button><button class="ghost small" data-mode="follow">录制视角</button>
+          </span>
+          <label class="check"><input type="checkbox" id="v4-static" checked /> 静态层</label>
+          <label class="check"><input type="checkbox" id="v4-dynamic" checked /> 动态层</label>
+          <span class="sep"></span>
+          <label class="inline">选择半径 <input type="number" id="v4-radius" step="0.01" min="0" /></label>
+          <button class="ghost small" id="v4-delete">删除所选</button>
+          <button class="ghost small" id="v4-undo">撤销</button>
+          <button class="ghost small" id="v4-clear">清除选择</button>
+          <span class="sep"></span>
+          <button class="ghost small" id="v4-ply">导出当前帧 PLY</button>
+          <button class="ghost small" id="v4-rec">录制视频</button>
+        </div>
+        <p class="hint">拖动环绕，Shift 或右键拖动平移，滚轮缩放。单击一个高斯，按半径选中周围的高斯，可删除、撤销；导出的 PLY 是标准 3DGS 格式，可在 SuperSplat 等工具里打开。</p>
+      </div>
+    </section>
+
     <!-- robot -->
     <section data-page="robot" class="page">
       <h1>机器人数据</h1>
@@ -228,6 +301,7 @@
 <datalist id="dl-raw"></datalist>
 <datalist id="dl-curated"></datalist>
 <div class="toast" id="toast" role="alert" hidden></div>
+<script src="/static/splat.js"></script>
 <script src="/static/console.js"></script>
 </body>
 </html>

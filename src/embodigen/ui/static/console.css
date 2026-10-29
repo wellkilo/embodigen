@@ -274,6 +274,30 @@ pre.src.hex { white-space: pre; word-break: normal; }
 .key { font: 12px var(--mono); padding: 1px 8px; border-radius: 5px; background: rgba(var(--accent-rgb), 0.14); color: var(--accent); }
 .key small { color: var(--muted); min-width: 0; }
 
+/* ---------- 4D worlds */
+h2.sub { margin: 26px 0 10px; display: flex; gap: 12px; align-items: baseline; }
+h2.sub .link { font-size: 13px; font-weight: 400; }
+.viewer4d { margin-top: 18px; border: 1px solid var(--line); border-radius: var(--r); padding: 14px; background: var(--bg-soft); }
+.v4-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.v4-stage { position: relative; }
+#v4-canvas {
+  width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 8px; touch-action: none; cursor: grab;
+  background: radial-gradient(ellipse at 50% 35%, #0e2a31, #040e11 75%);
+}
+#v4-canvas:active { cursor: grabbing; }
+.v4-hud { position: absolute; left: 10px; top: 8px; font: 11.5px var(--mono); color: var(--muted); pointer-events: none; }
+.v4-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 6px 0 4px; }
+.v4-tools .sep { width: 1px; height: 22px; background: var(--line-strong); }
+.v4-tools label.check { font-size: 13px; }
+label.inline { flex-direction: row; align-items: center; gap: 6px; }
+label.inline input { width: 80px; }
+.seg { display: inline-flex; gap: 0; }
+.seg .ghost { border-radius: 0; }
+.seg .ghost:first-child { border-radius: 999px 0 0 999px; }
+.seg .ghost:last-child { border-radius: 0 999px 999px 0; border-left: 0; }
+.ghost.on { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), 0.1); }
+#v4-speed { width: auto; }
+
 /* ---------- toast */
 .toast {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px));

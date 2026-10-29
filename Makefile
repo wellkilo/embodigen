@@ -1,4 +1,4 @@
-.PHONY: install test demo batch preview docs worlds samples embodied ui clean
+.PHONY: install test demo batch preview docs worlds samples embodied world4d ui clean
 
 install:
 	pip install -e .
@@ -26,6 +26,7 @@ worlds:
 	PYTHONPATH=src python3 -m embodigen.cli rollout --world raycast-maze --episodes 1 --seed 80 --seconds 60 --drift-ms-per-min 600 --out data/raw
 	PYTHONPATH=src python3 -m embodigen.cli curate --raw data/raw --out data/curated
 	PYTHONPATH=src python3 -m embodigen.cli build --curated data/curated --study configs/studies/reference.toml --out data/mixes
+	PYTHONPATH=src python3 -m embodigen.cli export --curated data/curated --out data/embodied --overwrite
 
 # Real public recordings (VPT, D2E, Open-P2P): fetch -> ingest -> curate -> build.
 # D2E's zstd chunks need Python 3.14+ or `pip install -e '.[d2e]'`.
@@ -38,11 +39,18 @@ samples:
 	PYTHONPATH=src python3 -m embodigen.cli ingest --source p2p --input data/samples/p2p --out data/samples-raw
 	PYTHONPATH=src python3 -m embodigen.cli curate --raw data/samples-raw --out data/samples-curated
 	PYTHONPATH=src python3 -m embodigen.cli build --curated data/samples-curated --study configs/studies/public-samples.toml --out data/samples-mixes
+	if [ -n "$(VIDEO)" ]; then PYTHONPATH=src python3 -m embodigen.cli export --curated data/samples-curated --out data/samples-embodied --overwrite; fi
 
 # Certified recordings as embodied (LeRobot-shaped) datasets; run after `make worlds` / `make samples`.
 embodied:
 	PYTHONPATH=src python3 -m embodigen.cli export --curated data/curated --out data/embodied --overwrite
-	if [ -f data/samples-curated/ledger.json ]; then PYTHONPATH=src python3 -m embodigen.cli export --curated data/samples-curated --out data/samples-embodied --overwrite; fi
+	if [ -f data/samples-curated/ledger.json ] && find data/samples \( -name '*.mp4' -o -name '*.mkv' \) | grep -q .; then \
+	  PYTHONPATH=src python3 -m embodigen.cli export --curated data/samples-curated --out data/samples-embodied --overwrite; fi
+
+# 4D Gaussian-splat worlds: one from a prompt (robot track), one from a game rollout.
+world4d:
+	PYTHONPATH=src python3 -m embodigen.cli world --task "把红色方块放进盒子"
+	PYTHONPATH=src python3 -m embodigen.cli world --rollout raycast-arena --seconds 20
 
 # Local web console for every step above (prints a link with an access token).
 ui:
