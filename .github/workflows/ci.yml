@@ -36,6 +36,7 @@ jobs:
           embodigen curate --raw data/raw --out data/curated
           embodigen build --curated data/curated --study configs/studies/reference.toml --out data/mixes
           embodigen ledger data/mixes/reference
+          embodigen export --curated data/curated --out data/embodied
           embodigen preview --recording data/raw/raycast-arena-0000 --max-frames 6
           embodigen ui --help > /dev/null && embodigen fetch --help > /dev/null
 

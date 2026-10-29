@@ -60,6 +60,7 @@ It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.
 | Convert Open-P2P recordings | `embodigen ingest --source p2p --input <dir> --out data/raw` |
 | Fetch real public samples | `embodigen fetch --out data/samples [--video] [--hf-endpoint https://hf-mirror.com]` (resumes; `scripts/fetch_public_samples.py` is the same) |
 | Run the steps from a browser | `embodigen ui` (127.0.0.1 only, token in the printed link; each job is a plain `embodigen ...` subprocess) |
+| Export certified recordings as an embodied (LeRobot-shaped) dataset | `embodigen export --curated data/curated --out data/embodied` (video sources need `.[video]`) |
 | Gate and canonicalise | `embodigen curate --raw data/raw --out data/curated` |
 | Build a mixture grid | `embodigen build --curated data/curated --study configs/studies/reference.toml --out data/mixes` |
 | Preview a recording | `embodigen preview --recording data/raw/<id>` |
@@ -75,6 +76,7 @@ It only counts as working if all 9 recordings are certified, D2E's `Minecraft_1.
 - Gameplay: split by recording (and by `session` when a source cuts one play session into parts), never by window. Budgets and mixtures must stay prefixes of one priority order (nested); when data runs short, shrink the run and report `shortfall_hours` instead of topping up from another world.
 - Gameplay: rationales explain the recorded action and never change it. Change an annotator's output only together with its `prompt_version`, which keys the cache.
 - Gameplay: the action text format lives only in `gameplay/actions.py` (`encode_action` / `decode_action`).
+- Gameplay: `export` (`gameplay/export.py`) writes the curated turns unchanged, certified recordings only; the action vector is derived from the same packet and every row keeps `action.text`. Frames of one dataset share one size (letterboxed, never stretched); depth/segmentation are exported only when frames keep their native size.
 - Paper numbers in `configs/studies/gamescaling.toml` are marked `paper`; guesses are marked `unpublished`. Keep that distinction.
 - Adapters: field names and quirks come from real files of that dataset, not from its docs alone. Tests build synthetic fixtures in the same shape; never commit dataset files (D2E is CC BY-NC).
 - Model-backed annotators call cloud APIs (`gameplay/llm.py`, OpenAI-compatible, stdlib `urllib`). Never deploy models locally or use the host's GPUs for this. API keys come from the user (`embodigen llm setup` or the provider's env var) and never enter study files, ledgers, caches or logs; a run without a key must stop before doing work.

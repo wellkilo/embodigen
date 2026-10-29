@@ -40,8 +40,9 @@ class DatasetTest(unittest.TestCase):
             index = json.loads((Path(tmp) / "index.json").read_text())
             self.assertEqual(index["summary"]["total"], 3)
             self.assertEqual(index["summary"]["certified"], 3)
-            for row in index["episodes"]:
-                self.assertTrue(Path(row["path"]).is_dir())
+            for row in index["episodes"]:  # relative to the dataset, so a copied dataset still resolves
+                self.assertEqual(row["path"], f"episodes/{row['episode_id']}")
+                self.assertTrue((Path(tmp) / row["path"]).is_dir())
 
     def test_index_merges_across_runs(self):
         with tempfile.TemporaryDirectory() as tmp:

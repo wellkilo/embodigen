@@ -66,7 +66,7 @@ LABELS = {"input": "输入目录", "out": "输出目录", "raw": "原始录像�
           "task": "任务", "model": "模型名", "episodes": "段数", "seconds": "秒数", "seed": "随机种子",
           "lag_ms": "输入错位", "drift_ms_per_min": "时钟漂移", "start": "起始秒", "frames": "帧数",
           "provider": "服务商", "source": "数据来源", "study": "研究配置", "annotator": "理由标注",
-          "profile": "玩家行为", "robot": "机器人", "resolution": "分辨率"}
+          "profile": "玩家行为", "robot": "机器人", "resolution": "分辨率", "size": "画面尺寸", "worlds": "世界"}
 
 
 # --------------------------------------------------------------------------- form values
@@ -194,8 +194,9 @@ class Runner:
                 break
             job.proc = proc
             assert proc.stdout is not None
-            for line in proc.stdout:
-                job.add(line.rstrip("\n").rsplit("\r", 1)[-1])
+            with proc.stdout:
+                for line in proc.stdout:
+                    job.add(line.rstrip("\n").rsplit("\r", 1)[-1])
             rc = proc.wait()
             job.proc = None
             if rc != 0:
@@ -284,7 +285,8 @@ class Workspace:
         return out
 
     def datasets(self) -> dict[str, list[dict[str, Any]]]:
-        found: dict[str, list[dict[str, Any]]] = {"inputs": [], "raw": [], "curated": [], "mixes": [], "robot": []}
+        found: dict[str, list[dict[str, Any]]] = {"inputs": [], "raw": [], "curated": [], "mixes": [], "embodied": [],
+                                                  "robot": []}
         skip = {"frames", "depth", "labels", "turns", "cache", "val", "episodes", "rejected", "__pycache__"}
         stack = [(self.root / top, 0) for top in ("data", "out") if (self.root / top).is_dir()]
         while stack:
@@ -308,6 +310,16 @@ class Workspace:
                     found["mixes"].append({"path": self.rel(d), "updated_at": data.get("updated_at", ""),
                                            "study": data.get("study", ""), "annotator": data.get("annotator", ""),
                                            "datasets": len(data.get("grid", []))})
+                continue
+            if (d / "meta" / "info.json").exists() and (d / "meta" / "episodes.jsonl").exists():
+                try:
+                    info = json.loads((d / "meta" / "info.json").read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    info = {}
+                shape = info.get("features", {}).get("observation.images.main", {}).get("shape", [0, 0])
+                found["embodied"].append({"path": self.rel(d), "episodes": info.get("total_episodes", 0),
+                                          "frames": info.get("total_frames", 0), "fps": info.get("fps", 0),
+                                          "size": f"{shape[1]}x{shape[0]}"})
                 continue
             if (d / "index.json").exists() and (d / "episodes").is_dir():
                 n = sum(1 for _ in (d / "episodes").iterdir())
@@ -382,6 +394,36 @@ class Workspace:
             episodes.append({**row, "path": self.rel(home) if home else ""})
         return {"path": self.rel(base), "index": {k: v for k, v in data.items() if k != "episodes"},
                 "episodes": episodes, "index_file": self.rel(index), "index_text": text}
+
+    def embodied(self, rel: str) -> dict[str, Any]:
+        """An `embodigen export` dataset: info.json and stats.json as written, its episodes."""
+        base = self.inside(rel)
+        meta = base / "meta"
+        if not (meta / "info.json").exists():
+            raise BadRequest(f"{rel} 下没有 meta/info.json")
+        info_text = (meta / "info.json").read_text(encoding="utf-8")
+        stats = meta / "stats.json"
+        episodes = [json.loads(line) for line in (meta / "episodes.jsonl").read_text(encoding="utf-8").splitlines()
+                    if line.strip()]
+        return {"path": self.rel(base), "info": json.loads(info_text), "info_text": info_text,
+                "stats_text": stats.read_text(encoding="utf-8") if stats.exists() else "", "episodes": episodes}
+
+    def rows(self, rel: str, episode: int, start: int, count: int) -> dict[str, Any]:
+        """Raw JSONL lines [start, start + count) of one exported episode."""
+        base = self.inside(rel)
+        info = json.loads((base / "meta" / "info.json").read_text(encoding="utf-8"))
+        chunk = episode // int(info.get("chunks_size", 1000))
+        path = self.inside(self.rel(base / "data" / f"chunk-{chunk:03d}" / f"episode_{episode:06d}.jsonl"))
+        if not path.exists():
+            raise BadRequest(f"没有回合 {episode}")
+        lines = []
+        with path.open(encoding="utf-8") as fh:
+            for i, line in enumerate(fh):
+                if i >= start + count:
+                    break
+                if i >= start:
+                    lines.append(line.rstrip("\n"))
+        return {"episode": episode, "start": start, "lines": lines}
 
     def tree(self, rel: str) -> dict[str, Any]:
         """Every file under a directory (an episode), with sizes."""
@@ -531,6 +573,23 @@ def plan(action: str, p: dict[str, Any], ws: Workspace) -> tuple[str, list[list[
                 "--episodes", _num(p, "episodes", 1, 1, 64, int),
                 "--resolution", _choice(p, "resolution", "96", tuple(map(str, RESOLUTIONS))), "--out", out]
         return "生成机器人数据", [_cli(*args), _cli("index", "--out", out)], []
+
+    if action == "export":
+        args = ["export", "--curated", _text(p, "curated", "data/curated"), "--out", _text(p, "out", "data/embodied")]
+        worlds = str(p.get("worlds") or "").strip()
+        if worlds:
+            if not all(w.replace("-", "").replace("_", "").isalnum() for w in worlds.split(",")):
+                raise BadRequest("世界名只能是逗号分隔的标签")
+            args += ["--worlds", worlds]
+        size = str(p.get("size") or "").strip().lower()
+        if size:
+            w, _, h = size.partition("x")
+            if not (w.isdigit() and h.isdigit()):
+                raise BadRequest("画面尺寸写成 宽x高，如 320x180")
+            args += ["--size", size]
+        if p.get("overwrite"):
+            args.append("--overwrite")
+        return "导出具身格式", [_cli(*args)], []
 
     if action == "llm-check":
         return "测试模型连接", [_cli("llm", "check", "--ping")], []
@@ -714,6 +773,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(ws.recordings(arg("dir")))
         if path == "/api/ledger":
             return self._json(ws.ledger(arg("path")))
+        if path == "/api/embodied":
+            return self._json(ws.embodied(arg("path")))
+        if path == "/api/rows":
+            try:
+                ep, start, count = int(arg("episode", "0")), int(arg("start", "0")), min(int(arg("count", "200")), 1000)
+            except ValueError:
+                raise BadRequest("episode / start / count 需要整数") from None
+            return self._json(ws.rows(arg("path"), ep, max(start, 0), max(count, 1)))
         if path == "/api/robot":
             return self._json(ws.robot(arg("path")))
         if path == "/api/tree":

@@ -203,6 +203,16 @@ def _run_one(config: PipelineConfig, instruction: str, robot_name: str, seed: in
     return summarize(Pipeline(config).run(instruction, robot_name=robot_name, seed=seed))
 
 
+def _relative(path: str | None, base: Path) -> str | None:
+    """Episode paths relative to the dataset root, so a copied dataset still resolves."""
+    if not path:
+        return path
+    try:
+        return Path(path).resolve().relative_to(Path(base).resolve()).as_posix()
+    except ValueError:
+        return path
+
+
 def write_index(
     out_dir: Path,
     rows: list[dict[str, Any]],
@@ -220,7 +230,8 @@ def write_index(
             pass
     by_id = {row["episode_id"]: row for row in index.get("episodes", [])}
     for row in rows:
-        by_id[row["episode_id"]] = {**row, "instruction": instruction, "robot": robot_name}
+        by_id[row["episode_id"]] = {**row, "instruction": instruction, "robot": robot_name,
+                                    "path": _relative(row.get("path"), out_dir)}
     episodes = sorted(by_id.values(), key=lambda r: r["episode_id"])
     certified = sum(1 for r in episodes if r["passed"])
     index = {
