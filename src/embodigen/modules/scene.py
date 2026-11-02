@@ -43,6 +43,61 @@ def _extract_color(instruction: str) -> tuple[int, int, int] | None:
     return None
 
 
+BIN_HALF = 0.055
+BIN_HEIGHT = 0.03
+BIN_WALL = 0.008
+TABLE_ALBEDO = (196, 190, 178)
+BIN_ALBEDO = (92, 96, 104)
+
+
+def pick_place_objects(cube_center: Vec3, bin_center: Vec3, cube_albedo: tuple[int, int, int],
+                       cube_half: float = 0.02, bin_albedo: tuple[int, int, int] = BIN_ALBEDO,
+                       table_albedo: tuple[int, int, int] = TABLE_ALBEDO) -> list[ObjectSpec]:
+    """The table, the cube and the hollow bin of a pick-and-place scene.
+
+    Shared by the template sampler and by digital twins (``embodigen.real2sim``), so a scene
+    measured in the real world has exactly the objects the planner, renderer and validator expect."""
+    wall, half, height = BIN_WALL, BIN_HALF, BIN_HEIGHT
+    bx, by, _ = bin_center
+    return [
+        ObjectSpec(
+            name="table",
+            kind="box",
+            center=(0.0, 0.0, -0.02),
+            # Much larger than the frustum on purpose: the far edge and
+            # corners stay out of frame, so the backdrop reads as a clean
+            # studio floor instead of a floating slab in the void.
+            half_extent=(2.5, 2.5, 0.02),
+            material="table",
+            albedo=table_albedo,
+            movable=False,
+        ),
+        ObjectSpec(
+            name="cube",
+            kind="box",
+            center=cube_center,
+            half_extent=(cube_half, cube_half, cube_half),
+            material="cube",
+            albedo=cube_albedo,
+        ),
+        # Hollow bin: floor plus four walls, so the opening reads in the render.
+        ObjectSpec(name="bin_floor", kind="box", center=(bx, by, height / 2), half_extent=(half, half, wall),
+                   material="bin", albedo=bin_albedo, movable=False, is_container=True),
+        ObjectSpec(name="bin_wall_x0", kind="box", center=(bx - half, by, height / 2), half_extent=(wall, half, height),
+                   material="bin", albedo=bin_albedo, movable=False, is_container=True),
+        ObjectSpec(name="bin_wall_x1", kind="box", center=(bx + half, by, height / 2), half_extent=(wall, half, height),
+                   material="bin", albedo=bin_albedo, movable=False, is_container=True),
+        ObjectSpec(name="bin_wall_y0", kind="box", center=(bx, by - half, height / 2), half_extent=(half, wall, height),
+                   material="bin", albedo=bin_albedo, movable=False, is_container=True),
+        ObjectSpec(name="bin_wall_y1", kind="box", center=(bx, by + half, height / 2), half_extent=(half, wall, height),
+                   material="bin", albedo=bin_albedo, movable=False, is_container=True),
+    ]
+
+
+def pick_place_success(tolerance_m: float = 0.05) -> dict:
+    return {"type": "object_inside_container", "object": "cube", "container": "bin_floor", "tolerance_m": tolerance_m}
+
+
 class TemplateSceneGenerator:
     """Sample a pick-and-place scene from a parameterised template."""
 
@@ -94,83 +149,7 @@ class TemplateSceneGenerator:
         if resamples:
             notes.append(f"resampled {resamples}x to satisfy reach/clearance")
 
-        wall = 0.008
-        half = 0.055
-        height = 0.03
-        bx, by, _ = bin_center
-        objects = [
-            ObjectSpec(
-                name="table",
-                kind="box",
-                center=(0.0, 0.0, -0.02),
-                # Much larger than the frustum on purpose: the far edge and
-                # corners stay out of frame, so the backdrop reads as a clean
-                # studio floor instead of a floating slab in the void.
-                half_extent=(2.5, 2.5, 0.02),
-                material="table",
-                albedo=(196, 190, 178),
-                movable=False,
-            ),
-            ObjectSpec(
-                name="cube",
-                kind="box",
-                center=cube_center,
-                half_extent=(0.02, 0.02, 0.02),
-                material="cube",
-                albedo=albedo,
-            ),
-            # Hollow bin: floor plus four walls, so the opening reads in the render.
-            ObjectSpec(
-                name="bin_floor",
-                kind="box",
-                center=(bx, by, height / 2),
-                half_extent=(half, half, wall),
-                material="bin",
-                albedo=(92, 96, 104),
-                movable=False,
-                is_container=True,
-            ),
-            ObjectSpec(
-                name="bin_wall_x0",
-                kind="box",
-                center=(bx - half, by, height / 2),
-                half_extent=(wall, half, height),
-                material="bin",
-                albedo=(92, 96, 104),
-                movable=False,
-                is_container=True,
-            ),
-            ObjectSpec(
-                name="bin_wall_x1",
-                kind="box",
-                center=(bx + half, by, height / 2),
-                half_extent=(wall, half, height),
-                material="bin",
-                albedo=(92, 96, 104),
-                movable=False,
-                is_container=True,
-            ),
-            ObjectSpec(
-                name="bin_wall_y0",
-                kind="box",
-                center=(bx, by - half, height / 2),
-                half_extent=(half, wall, height),
-                material="bin",
-                albedo=(92, 96, 104),
-                movable=False,
-                is_container=True,
-            ),
-            ObjectSpec(
-                name="bin_wall_y1",
-                kind="box",
-                center=(bx, by + half, height / 2),
-                half_extent=(half, wall, height),
-                material="bin",
-                albedo=(92, 96, 104),
-                movable=False,
-                is_container=True,
-            ),
-        ]
+        objects = pick_place_objects(cube_center, bin_center, albedo)
 
         return SceneSpec(
             scene_id=f"{task.robot}-{task.seed:04d}",
