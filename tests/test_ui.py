@@ -82,6 +82,8 @@ class ConsoleTest(unittest.TestCase):
         self.assertEqual(r["steps"][0], "embodigen fetch --out data/samples --video --hf-endpoint https://hf-mirror.com")
         self.assertEqual(len(r["steps"]), 7)  # with videos the run ends in the embodied export
         self.assertTrue(r["steps"][-1].startswith("embodigen export --curated data/samples-curated"))
+        _, r = self.call("/api/plan", {"action": "export", "params": {"verified_only": True}})
+        self.assertEqual(r["steps"], ["embodigen export --curated data/curated --out data/embodied --verified-only"])
         _, r = self.call("/api/plan", {"action": "ingest", "params": {"source": "vpt", "input": "--help"}})
         self.assertIn("不接受", r["error"])
         _, r = self.call("/api/plan", {"action": "rollout", "params": {"worlds": ["no-such-world"]}})

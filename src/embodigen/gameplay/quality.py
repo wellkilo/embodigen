@@ -391,11 +391,15 @@ def shift_events(events: list[InputEvent], seconds: float, duration: float) -> l
     return out
 
 
-def check_alignment(rec: Recording, root: Path, cfg: QualityConfig) -> tuple[dict[str, Any], list[InputEvent], float]:
-    """Measure alignment; realign once if the lag is clear. Returns (report, events, correction_ms)."""
+def check_alignment(rec: Recording, root: Path, cfg: QualityConfig,
+                    checker: AlignmentChecker | None = None) -> tuple[dict[str, Any], list[InputEvent], float]:
+    """Measure alignment; realign once if the lag is clear. Returns (report, events, correction_ms).
+
+    A ``checker`` can be passed to reuse the frame profiles it has already decoded (the lag sweep
+    measures one recording many times)."""
     if not cfg.alignment:
         return {"status": "disabled"}, rec.events, 0.0
-    checker = AlignmentChecker(cfg)
+    checker = checker or AlignmentChecker(cfg)
     first = checker.measure(rec, root, rec.events)
     if first["status"] != "misaligned" or not cfg.realign:
         return first, rec.events, 0.0

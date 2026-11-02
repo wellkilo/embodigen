@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-145_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-148_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -154,6 +154,25 @@ build             →  data/mixes/<study>/          划分 · 窗口 · 配比 �
 
 - **容差有毫秒下限（34 ms）**：一个动作包最细的时间单位是 33 ms 的按键槽，比这小的时延不改变任何标签。60 fps 采集时，一帧容差只有 16.7 ms，测量噪声就可能触发校正，所以加了这个下限。
 - **漂移追踪**：一段有镜头运动、却和鼠标不相关，而相邻一段测得出时，校验器从测得出的那段出发，分 4 步走向它，每一步都以上一步的时延为中心重新搜索。这样能跟住超出 ±600 ms 窗口的漂移。单纯放宽窗口不行：在真实录像上，±3000 ms 的窗口会让 Brotato 这类干净录像出现 0.25 的伪峰，被误判为漂移。
+
+### 在真实录像上注入时延：检出曲线
+
+只看干净数据里"全部对齐"不能说明闸门有用。`scripts/alignment_sweep.py` 把每条真实录像的输入日志平移一个已知时延（−600 到 +600 ms，11 档），再跑一遍完整的闸门（测量、校正一次、复检），按"真实时延 = 录像自带时延 + 注入时延"判分。9 条公开录像里 8 条能测（Brotato 是俯视视角，没有可测的视角运动）：
+
+| 结果 | 次数 | 含义 |
+|---|---|---|
+| 时延超出容差，被校正且校正量在容差内 | 56 / 67 | 能救回来 |
+| 时延超出容差，被拒绝（misaligned / drift） | 10 / 67 | 宁可不要，也不乱改 |
+| 校正量错了 | 0 / 67 | |
+| 漏过（当作对齐放行，或测不出） | 1 / 67 | D2E Minecraft 注入 −600 ms，加上它自带的 −33 ms 是 −633 ms，超出 ±600 ms 的搜索窗口 |
+| 时延在容差内，原样放行 | 20 / 21 | 另 1 次被"校正"了一下（D2E Minecraft 自带 −33 ms） |
+| 时延在容差内，误报为失步 | 0 / 21 | |
+
+10 次拒绝全部来自 CS2：它的互相关只有 0.30，几乎每档都不敢下结论，于是一律拒绝而不是冒险校正。结果存在 `docs/assets/alignment-sweep.json`，复现：`python3 scripts/alignment_sweep.py --raw data/samples-raw`（需要 `[video]`）。
+
+局限：这是平移整份日志的合成时延，真实采集里的失步可能不是常数；样本只有 8 条可测录像，来自 3 个数据源。
+
+**哪些录像的对齐没有被验证。** 测不出的录像（俯视游戏、没有视频解码器）仍然会通过闸门，因为它们没有失败的证据。导出时每个 episode 都带 `alignment`（`meta/episodes.jsonl`），`verified` 为真才表示实测过；训练需要动作与画面严格同步时，用 `embodigen export --verified-only` 只保留实测过的录像（9 条真实样本里导出 8 条，Brotato 被剔除）。
 
 真实运行结果（参考世界，30 Hz 录制）：
 
@@ -551,7 +570,7 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen ingest --source vpt\|d2e\|p2p --input <dir> [-j K]` | 把数据集录像转换成统一原始布局 |
 | `embodigen curate --raw <dir> --out <dir> [--no-realign]` | 对齐校验、动作规范化、闸门 |
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
-| `embodigen export --curated <dir> --out <dir> [--worlds a,b] [--size WxH]` | 把通过闸门的录像写成具身格式（LeRobot 形状：每步画面 + 数值动作 + 位姿/深度/分割） |
+| `embodigen export --curated <dir> --out <dir> [--worlds a,b] [--size WxH] [--verified-only]` | 把通过闸门的录像写成具身格式（LeRobot 形状：每步画面 + 数值动作 + 位姿/深度/分割） |
 | `embodigen world --task "..." \| --rollout <world> \| --recording <dir> \| --episode <dir>` | 生成 4D 高斯世界（3DGS），在控制台「4D 世界」里看 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
@@ -594,7 +613,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 145 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 148 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
