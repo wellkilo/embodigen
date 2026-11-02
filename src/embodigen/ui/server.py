@@ -605,6 +605,8 @@ def plan(action: str, p: dict[str, Any], ws: Workspace) -> tuple[str, list[list[
             if not (w.isdigit() and h.isdigit()):
                 raise BadRequest("画面尺寸写成 宽x高，如 320x180")
             args += ["--size", size]
+        if p.get("verified_only"):
+            args.append("--verified-only")
         if p.get("overwrite"):
             args.append("--overwrite")
         return "导出具身格式", [_cli(*args)], []

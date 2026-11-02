@@ -241,10 +241,14 @@ def _cmd_export(args: argparse.Namespace) -> int:
     worlds = {w.strip() for w in args.worlds.split(",") if w.strip()} if args.worlds else None
     r = export(Path(args.curated), Path(args.out), worlds=worlds, width=args.width,
                video_backend=args.video_backend, workers=args.workers or default_workers(),
-               overwrite=args.overwrite, registry=_registry(args), size=_size(args.size) if args.size else None)
+               overwrite=args.overwrite, registry=_registry(args), size=_size(args.size) if args.size else None,
+               verified_only=args.verified_only)
     print(f"episodes     {r['episodes']} ({', '.join(f'{k} {v}' for k, v in r['splits'].items())}), "
           f"{r['frames']} steps @ 5 Hz = {r['minutes']} min, {r['tasks']} tasks")
     print(f"worlds       {', '.join(r['worlds'])}")
+    al = r["alignment"]
+    print(f"alignment    verified {al['verified']}, unverified {al['unverified']}, realigned {al['realigned']}"
+          + ("  (episodes.jsonl marks which)" if al["unverified"] else ""))
     extra = [name for name, on in (("observation.state", r["state"]), ("observation.depth", r["depth"]),
                                    ("observation.segmentation", r["segmentation"])) if on]
     print(f"features     observation.images.main {r['size'][0]}x{r['size'][1]}, action[{len(ACTION_NAMES)}]"
@@ -549,6 +553,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="frame width when sources differ or come from video (height = 9/16 of it)")
     ex.add_argument("--size", default="", help="force every frame to WxH (letterboxed); default: see --width")
     ex.add_argument("--video-backend", default="pyav", help="decoder for frames kept in videos (pyav)")
+    ex.add_argument("--verified-only", action="store_true",
+                    help="keep only recordings whose input/video alignment was measured (drops top-down games and unchecked video)")
     ex.add_argument("--overwrite", action="store_true", help="replace an earlier export in --out")
     ex.add_argument("--workers", "-j", type=int, default=0)
     ex.set_defaults(func=_cmd_export)

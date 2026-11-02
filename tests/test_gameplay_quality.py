@@ -72,6 +72,29 @@ class AlignmentTest(unittest.TestCase):
         self.assertAlmostEqual(gate(rec, root).realigned_ms, 300.0, delta=34.0)
 
 
+class SweepTest(unittest.TestCase):
+    def test_sweep_recovers_injected_lags_and_leaves_small_ones_alone(self):
+        import importlib.util
+
+        path = Path(__file__).resolve().parents[1] / "scripts" / "alignment_sweep.py"
+        spec = importlib.util.spec_from_file_location("alignment_sweep", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as tmp:
+            play(tmp, "clean")
+            rows = mod.sweep(Path(tmp), lags=(-300, 0, 300))
+            self.assertEqual(len(rows), 1)
+            out = {x["injected_ms"]: x["outcome"] for x in rows[0]["lags"]}
+            self.assertEqual(out[0], "ok")
+            self.assertEqual((out[-300], out[300]), ("recovered", "recovered"))
+            self.assertIn("recovered 2", mod.table(rows))
+        # the verdicts themselves
+        self.assertEqual(mod.classify({}, {"status": "misaligned"}, 0.0, 300, 0.0, 34.0), "rejected")
+        self.assertEqual(mod.classify({}, {"status": "aligned"}, 0.0, 300, 0.0, 34.0), "missed")
+        self.assertEqual(mod.classify({}, {"status": "aligned"}, 100.0, 300, 0.0, 34.0), "wrong")
+        self.assertEqual(mod.classify({}, {"status": "misaligned"}, 0.0, 20, 0.0, 34.0), "false-alarm")
+
+
 class DriftTest(unittest.TestCase):
     def test_clock_drift_is_rejected_not_shifted(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,0 +1,742 @@
+[
+ {
+  "recording_id": "d2e-brotato-20250901_085726_6b049e5b",
+  "source": "d2e",
+  "world": "brotato",
+  "baseline": {
+   "status": "inconclusive",
+   "lag_ms": null,
+   "corr": null
+  },
+  "lags": [],
+  "skipped": "weak correlation"
+ },
+ {
+  "recording_id": "d2e-counter-strike-2-20250820_212408_ea30a554",
+  "source": "d2e",
+  "world": "counter-strike-2",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.3
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -600.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -300.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -150.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "rejected",
+    "status": "drift",
+    "corrected_ms": 0.0,
+    "measured_ms": 200.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "rejected",
+    "status": "drift",
+    "corrected_ms": 0.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "rejected",
+    "status": "misaligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 0.0,
+  "tolerance_ms": 34.0
+ },
+ {
+  "recording_id": "d2e-minecraft-20250827_052328_366c9184_split_00",
+  "source": "d2e",
+  "world": "minecraft",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.225
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "missed",
+    "status": "inconclusive",
+    "corrected_ms": 0.0,
+    "measured_ms": null
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -332.9,
+    "measured_ms": -332.9
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -183.1,
+    "measured_ms": -183.1
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -133.2,
+    "measured_ms": -133.2
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -83.2,
+    "measured_ms": -83.2
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok-corrected",
+    "status": "aligned",
+    "corrected_ms": -33.3,
+    "measured_ms": -33.3
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 16.6
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 66.6,
+    "measured_ms": 66.6
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 116.5,
+    "measured_ms": 116.5
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 266.3,
+    "measured_ms": 266.3
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 565.9,
+    "measured_ms": 565.9
+   }
+  ],
+  "baseline_ms": -33.3,
+  "tolerance_ms": 34.0
+ },
+ {
+  "recording_id": "p2p-01993060-06a0-7352-ac0b-d77d50a1aba7",
+  "source": "p2p",
+  "world": "call-of-duty-mobile",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.473
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -600.0,
+    "measured_ms": -600.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -300.0,
+    "measured_ms": -300.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -150.0,
+    "measured_ms": -150.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -100.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 50.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 100.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 150.0,
+    "measured_ms": 150.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 300.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 600.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 0.0,
+  "tolerance_ms": 50.0
+ },
+ {
+  "recording_id": "p2p-01993bb8-12e7-78a1-b661-0c0c3a258e21",
+  "source": "p2p",
+  "world": "grand-theft-auto-san-andreas",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.345
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -600.0,
+    "measured_ms": -600.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -300.0,
+    "measured_ms": -300.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -150.0,
+    "measured_ms": -150.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -100.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 50.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 100.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 150.0,
+    "measured_ms": 150.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 300.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 600.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 0.0,
+  "tolerance_ms": 50.0
+ },
+ {
+  "recording_id": "p2p-0199d579-91ea-78f2-acd4-7cda376a3cea",
+  "source": "p2p",
+  "world": "roblox-a-dusty-trip",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 50.0,
+   "corr": 0.409
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -550.0,
+    "measured_ms": -550.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -250.0,
+    "measured_ms": -250.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -100.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 50.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 100.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 150.0,
+    "measured_ms": 150.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 200.0,
+    "measured_ms": 200.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 350.0,
+    "measured_ms": 350.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 600.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 50.0,
+  "tolerance_ms": 50.0
+ },
+ {
+  "recording_id": "vpt-Player129-f153ac423f61-20210617-171344",
+  "source": "vpt",
+  "world": "minecraft",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.311
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -600.0,
+    "measured_ms": -600.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -300.0,
+    "measured_ms": -300.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -150.0,
+    "measured_ms": -150.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -100.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 50.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 100.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 150.0,
+    "measured_ms": 150.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 300.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 600.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 0.0,
+  "tolerance_ms": 50.0
+ },
+ {
+  "recording_id": "vpt-Player129-f153ac423f61-20210617-172319",
+  "source": "vpt",
+  "world": "minecraft",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.585
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -600.0,
+    "measured_ms": -600.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -300.0,
+    "measured_ms": -300.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -150.0,
+    "measured_ms": -150.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -100.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 50.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 100.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 150.0,
+    "measured_ms": 150.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 300.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 600.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 0.0,
+  "tolerance_ms": 50.0
+ },
+ {
+  "recording_id": "vpt-Player129-f153ac423f61-20210617-173110",
+  "source": "vpt",
+  "world": "minecraft",
+  "baseline": {
+   "status": "aligned",
+   "lag_ms": 0.0,
+   "corr": 0.532
+  },
+  "lags": [
+   {
+    "injected_ms": -600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -600.0,
+    "measured_ms": -600.0
+   },
+   {
+    "injected_ms": -300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -300.0,
+    "measured_ms": -300.0
+   },
+   {
+    "injected_ms": -150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -150.0,
+    "measured_ms": -150.0
+   },
+   {
+    "injected_ms": -100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": -100.0,
+    "measured_ms": -100.0
+   },
+   {
+    "injected_ms": -50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": -50.0
+   },
+   {
+    "injected_ms": 0,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 0.0
+   },
+   {
+    "injected_ms": 50,
+    "outcome": "ok",
+    "status": "aligned",
+    "corrected_ms": 0.0,
+    "measured_ms": 50.0
+   },
+   {
+    "injected_ms": 100,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 100.0,
+    "measured_ms": 100.0
+   },
+   {
+    "injected_ms": 150,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 150.0,
+    "measured_ms": 150.0
+   },
+   {
+    "injected_ms": 300,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 300.0,
+    "measured_ms": 300.0
+   },
+   {
+    "injected_ms": 600,
+    "outcome": "recovered",
+    "status": "aligned",
+    "corrected_ms": 600.0,
+    "measured_ms": 600.0
+   }
+  ],
+  "baseline_ms": 0.0,
+  "tolerance_ms": 50.0
+ }
+]

@@ -50,6 +50,35 @@ class ExportTest(unittest.TestCase):
         self.assertEqual([e["length"] for e in self.episodes], [turns[e["recording_id"]] for e in self.episodes])
         self.assertEqual(self.info["total_frames"], sum(turns.values()))
 
+    def test_episodes_say_whether_their_alignment_was_measured(self):
+        status = {r["recording_id"]: (r["alignment"].get("status"), r["realigned_ms"]) for r in self.rows}
+        for e in self.episodes:
+            a = e["alignment"]
+            self.assertEqual(a["status"], status[e["recording_id"]][0])
+            self.assertEqual(a["verified"], a["status"] == "aligned")
+        al = self.info["alignment"]
+        self.assertEqual(al["verified"] + al["unverified"], len(self.episodes))
+        self.assertEqual(self.result["alignment"], al)
+
+    def test_verified_only_drops_what_the_gate_could_not_measure(self):
+        cur = self.tmp / "curated-marked"
+        shutil.copytree(self.curated, cur)
+        rows = jsonl(cur / "recordings.jsonl")
+        certified = [r for r in rows if r["passed"]]
+        for i, r in enumerate(certified):  # the first one could not be measured; the rest could
+            r["alignment"] = {"status": "inconclusive" if i == 0 else "aligned"}
+        (cur / "recordings.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        out = self.tmp / "embodied-verified"
+        r = export(cur, out, registry=self.registry, verified_only=True)
+        got = {e["recording_id"] for e in jsonl(out / "meta" / "episodes.jsonl")}
+        self.assertEqual(got, {x["recording_id"] for x in certified[1:]})
+        self.assertEqual(r["alignment"], {"verified": len(certified) - 1, "unverified": 0, "realigned": 0})
+        for r in certified:
+            r["alignment"] = {"status": "skipped"}
+        (cur / "recordings.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            export(cur, self.tmp / "none", registry=self.registry, verified_only=True)
+
     def test_rows_carry_the_curated_actions_unchanged(self):
         for e in self.episodes:
             curated = jsonl(self.curated / "turns" / f"{e['recording_id']}.jsonl")

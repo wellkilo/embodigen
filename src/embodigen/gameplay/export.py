@@ -28,7 +28,9 @@ episode per recording, one row per 200 ms action packet::
 
 The vector drops the order of keys inside the 200 ms; the row keeps it, and the
 exact GameScaling text: ``action.keys`` (six slots) and ``action.text``
-(``encode_action``). The labels are the curated turns, unchanged.
+(``encode_action``). The labels are the curated turns, unchanged. Each line of ``episodes.jsonl`` carries
+``alignment`` (see ``alignment_of``): ``verified`` is false where the gate could not measure the
+input/video sync, and ``export --verified-only`` keeps only the verified episodes.
 
 ``observation.state`` (float32: x, y, z, yaw, pitch; z up, each game's own
 units and angle convention) is written only when every exported recording
@@ -131,7 +133,24 @@ def _task(world_title: str, state: dict[str, Any] | None) -> str:
     return f"Play {world_title}"
 
 
-def plan(curated: Path, worlds: set[str] | None = None) -> tuple[Path, list[dict[str, Any]]]:
+def alignment_of(row: dict[str, Any]) -> dict[str, Any]:
+    """What the gate established about input/video sync for one recording.
+
+    ``verified`` is true only when the lag was measured from pixels and found within tolerance
+    (or corrected to within it). ``inconclusive`` / ``skipped`` recordings pass the gate but
+    nothing was checked: top-down views have no camera motion to measure, and a missing video
+    decoder skips the check. Training code that needs synced actions should filter on this."""
+    a = row.get("alignment") or {}
+    status = a.get("status", "unknown")
+    out: dict[str, Any] = {"status": status, "verified": status == "aligned",
+                           "realigned_ms": row.get("realigned_ms", 0.0)}
+    for key in ("lag_ms", "corr", "checker"):
+        if key in a:
+            out[key] = a[key]
+    return out
+
+
+def plan(curated: Path, worlds: set[str] | None = None, verified_only: bool = False) -> tuple[Path, list[dict[str, Any]]]:
     """(raw root, certified recording rows to export), in a stable order."""
     ledger_path = curated / "ledger.json"
     if not ledger_path.exists():
@@ -146,6 +165,12 @@ def plan(curated: Path, worlds: set[str] | None = None) -> tuple[Path, list[dict
         rows = [r for r in rows if r["world"] in worlds]
     if not rows:
         raise SystemExit(f"no certified recordings in {curated}; nothing to export")
+    if verified_only:
+        kept = [r for r in rows if alignment_of(r)["verified"]]
+        if not kept:
+            raise SystemExit(f"--verified-only: none of {len(rows)} certified recordings has a measured input/video "
+                             "alignment (top-down games, or no video decoder: install .[video])")
+        rows = kept
     # Same rule as splits.split: a source's "val" tag holds out its whole session.
     # Held-out recordings go last, so each split is one contiguous episode range.
     held = {session_of(r) for r in rows if r.get("split_hint") == "val"}
@@ -288,10 +313,12 @@ def frame_size(curated: Path, raw_root: Path, rows: list[dict[str, Any]], need_v
 
 def export(curated: Path, out: Path, worlds: set[str] | None = None, width: int = 320,
            video_backend: str = "pyav", workers: int = 1, overwrite: bool = False,
-           registry: WorldRegistry | None = None, size: tuple[int, int] | None = None) -> dict[str, Any]:
-    """``size`` (w, h) forces every frame to that shape; by default see ``frame_size``."""
+           registry: WorldRegistry | None = None, size: tuple[int, int] | None = None,
+           verified_only: bool = False) -> dict[str, Any]:
+    """``size`` (w, h) forces every frame to that shape; by default see ``frame_size``.
+    ``verified_only`` drops certified recordings whose input/video alignment could not be measured."""
     curated, out = Path(curated), Path(out)
-    raw_root, rows = plan(curated, worlds)
+    raw_root, rows = plan(curated, worlds, verified_only)
     need = _needs_video(curated, rows)
     if need:  # fail before writing anything
         reader, why = video_reader(video_backend)
@@ -368,6 +395,7 @@ def _write(curated: Path, out: Path, raw_root: Path, rows: list[dict[str, Any]],
             "recording_id": row["recording_id"], "world": row["world"], "source": row["source"],
             "session": session_of(row), "split": row["_split"],
             "realigned_ms": row.get("realigned_ms", 0.0),
+            "alignment": alignment_of(row),
         })
 
     n_train = sum(1 for e in episodes if e["split"] == "train")
@@ -412,6 +440,9 @@ def _write(curated: Path, out: Path, raw_root: Path, rows: list[dict[str, Any]],
         "features": features,
         "source": {"curated": str(curated.resolve()), "raw_root": str(raw_root),
                    "worlds": sorted({e["world"] for e in episodes})},
+        "alignment": {"verified": sum(e["alignment"]["verified"] for e in episodes),
+                      "unverified": sum(not e["alignment"]["verified"] for e in episodes),
+                      "realigned": sum(bool(e["realigned_ms"]) for e in episodes)},
         "note": ("One row per 200 ms GameScaling action packet: the frame at its start and the keyboard/mouse "
                  "action during it. Keys follow LeRobot v2.1, but frames are PNG files referenced by path, rows "
                  "are JSONL (parquet only with pyarrow) and there is no episodes_stats.jsonl, so LeRobotDataset "
@@ -430,5 +461,5 @@ def _write(curated: Path, out: Path, raw_root: Path, rows: list[dict[str, Any]],
     _write_json(out / "meta" / "stats.json", stats)
     return {"out": str(out), "episodes": len(episodes), "size": [w, h], "frames": total, "tasks": len(tasks),
             "splits": splits, "state": with_state, "depth": with_depth, "segmentation": with_seg,
-            "parquet": parquet, "worlds": info["source"]["worlds"],
+            "parquet": parquet, "worlds": info["source"]["worlds"], "alignment": info["alignment"],
             "minutes": round(total * CHUNK_S / 60, 1)}
