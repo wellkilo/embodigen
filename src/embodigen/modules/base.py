@@ -73,6 +73,7 @@ class DatasetPacker(Protocol):
 BACKENDS: dict[str, dict[str, str]] = {
     "scene": {
         "template": "embodigen.modules.scene:TemplateSceneGenerator",
+        "twin": "embodigen.real2sim.twin:TwinSceneGenerator",
     },
     "trajectory": {
         "waypoint": "embodigen.modules.trajectory:WaypointTrajectoryGen",

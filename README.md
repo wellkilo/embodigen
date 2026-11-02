@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-148_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-162_passing-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -381,6 +381,44 @@ data/embodied/
 - **新引擎**：实现 `reset / step / observe / done / close`，`observe` 返回的状态里带 `visible` 列表，脚本玩家就能直接驱动它。
 - **别的推理标注后端**：实现 `rationale(turn, context, world, media)`，设置 `name` 和 `prompt_version`，注册到 `BACKENDS["annotate"]`。缓存和"每个回合只标一次"的规则自动生效；有 `workers` 属性的后端会先并发填缓存（参照 `gameplay/llm.py`）。
 
+## 真实到仿真再回到数据：数字孪生
+
+[Homebody](https://tml.stanford.edu/homebody/)（斯坦福）用机器人在真实房间里采集的视频和激光雷达，让云端大模型在 Isaac Sim 里搭出数字孪生，部署时拿它做空间推理。**它的页面没有描述用仿真数据去训练模型，只描述了运行时用孪生推理**，所以这里没有照搬它的流程，而是把"真实场景 → 孪生 → 受控随机化的仿真数据"这条回路在已有的抓放管线上接通：
+
+```bash
+# 1. 真实桌面 → 孪生。量过位置就直接给（机器人桌面坐标系：原点在底座正下方，+x 向前，+y 向左，单位米）
+embodigen real2sim --cube-xy -0.07 0.08 --bin-xy 0.14 -0.06 --cube-color blue --out data/twins/desk.json
+#    没量过：给一张照片，云端视觉模型估计（需要先 `embodigen llm setup`，没有 key 不会读照片也不会发请求）
+embodigen real2sim --image desk.jpg --out data/twins/desk.json
+
+# 2. 孪生 → 仿真数据：位置、颜色、相机在孪生附近随机化，每一条都过原来的"规划→渲染→忠实度"闸门
+embodigen gen --task "把方块放进盒子" --twin data/twins/desk.json --jitter 0.03 --episodes 64 --out out-desk
+```
+
+| | Homebody | 这里 |
+|---|---|---|
+| 真实侧输入 | 机器人自己采集：视频 + 激光雷达 + SLAM | 一张照片（云端模型估计），或你量好的数字 |
+| 孪生是什么 | Isaac Sim 里的整间厨房 | 一个抓放桌面：方块、盒子、颜色（`embodigen-twin-v1` JSON） |
+| 孪生怎么用 | 部署时的空间记忆，供大模型规划 | 训练数据的起点：随机化后批量生成 |
+| 来源怎么记 | — | `source` 写明是实测还是模型估计，并进每条 episode 的 `meta/scene.json` 和 `index.json`（`twin` 字段） |
+| 数据能不能直接训练 | 页面没有训练环节 | 输出就是 LeRobot 形状的 episode，和其余机器人数据同一格式 |
+
+实测（孪生 = 上面命令里的桌面，96 px，每档 32 条，本机 CPU）：
+
+| `--jitter` | 通过忠实度闸门 | p95 误差（中位 / 最大） | 回退到原孪生 |
+|---|---|---|---|
+| 0（孪生本身） | 32 / 32 | 2.44 / 2.44 mm | — |
+| 0.03 m | 32 / 32 | 2.19 / 3.50 mm | 0 / 200 |
+| 0.06 m | 32 / 32 | 2.33 / 3.18 mm | 0 / 200 |
+
+这些数字只说明：随机化后的场景仍然可达、可渲染、几何和像素对得上。**它们没有说明**孪生和真实桌面有多像，也没有说明用这些数据训练出来的策略在真机上会不会更好，这两件事都没有测，也没有训练环节。
+
+边界：
+
+- 孪生只覆盖一个方块和一个盒子的抓放桌面，盒子大小固定，方块边长限制在 3–6 cm；规划器的假设（物体名、抓取偏移）都按这个场景写的。
+- 照片估计只是起点。单张照片没有尺度，模型靠常识猜距离，误差可能有几厘米；结果在孪生文件和每条 episode 里都标着"model-estimated"，超出机器人够得着的范围或视野的估计会被拒绝，不会被悄悄改到能跑。云端估计的路径只用假接口测过，还没在真实服务商上跑过（这台机器没有 key）。
+- 渲染器仍是 mock，"sim2real"这一半（让画面更像真实相机）要等云端图像到视频的后端，需要先选服务商并提供 key。
+
 ## 4D 世界：从提示到 3DGS 到网页
 
 ```bash
@@ -571,6 +609,8 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen curate --raw <dir> --out <dir> [--no-realign]` | 对齐校验、动作规范化、闸门 |
 | `embodigen build --curated <dir> --study <toml>` | 划分、配比 × 预算、稀疏推理、分片 |
 | `embodigen export --curated <dir> --out <dir> [--worlds a,b] [--size WxH] [--verified-only]` | 把通过闸门的录像写成具身格式（LeRobot 形状：每步画面 + 数值动作 + 位姿/深度/分割） |
+| `embodigen real2sim --cube-xy X Y --bin-xy X Y \| --image photo.jpg [--out twin.json]` | 做一个桌面的数字孪生（实测数字，或云端模型从照片估计） |
+| `embodigen gen ... --twin twin.json --jitter 0.03` | 以孪生为起点随机化批量生成，每条仍过忠实度闸门 |
 | `embodigen world --task "..." \| --rollout <world> \| --recording <dir> \| --episode <dir>` | 生成 4D 高斯世界（3DGS），在控制台「4D 世界」里看 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
@@ -613,7 +653,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 148 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 162 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）

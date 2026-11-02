@@ -2,6 +2,7 @@
 
 Robot track:          gen | validate | preview | index
 Virtual-world track:  worlds | rollout | fetch | ingest | curate | build | export | ledger | llm
+Real-to-sim:          real2sim (a twin of a measured tabletop) -> gen --twin ... --jitter
 Both:                 world (4D Gaussian-splat worlds) | backends | ui (a local web console for all of the above)
 """
 
@@ -29,7 +30,13 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         seed=args.seed,
         inject_drift_mm=args.drift,
         pack=not args.no_pack,
+        twin=args.twin,
+        jitter=args.jitter,
     )
+    if args.jitter and not args.twin:
+        raise SystemExit("--jitter randomises around a twin; pass --twin twin.json (see `embodigen real2sim`)")
+    if args.jitter < 0:
+        raise SystemExit("--jitter must be 0 or more")
     if args.episodes < 1:
         raise SystemExit("--episodes must be at least 1")
     pipeline = Pipeline(cfg)
@@ -258,6 +265,69 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _color(text: str | None, default: tuple[int, int, int]) -> tuple[int, int, int]:
+    from embodigen.modules.scene import COLOR_WORDS
+
+    if not text:
+        return default
+    if "," in text:
+        try:
+            rgb = tuple(int(v) for v in text.split(","))
+        except ValueError:
+            rgb = ()
+        if len(rgb) == 3 and all(0 <= v <= 255 for v in rgb):
+            return rgb  # type: ignore[return-value]
+        raise SystemExit(f"colour {text!r}: write R,G,B in 0..255 or a name ({', '.join(w for w in COLOR_WORDS if w.isascii())})")
+    if text.lower() not in COLOR_WORDS:
+        raise SystemExit(f"colour {text!r}: write R,G,B in 0..255 or a name ({', '.join(w for w in COLOR_WORDS if w.isascii())})")
+    return COLOR_WORDS[text.lower()]
+
+
+def _cmd_real2sim(args: argparse.Namespace) -> int:
+    from embodigen.real2sim.twin import Twin, problems, write_twin
+
+    measured = args.cube_xy is not None or args.bin_xy is not None
+    if bool(args.image) == bool(measured):
+        raise SystemExit("give either --image photo.jpg (a cloud model estimates the twin) or "
+                         "--cube-xy X Y --bin-xy X Y (you measured it)")
+    robot = load_robot(args.robot)
+    if args.image:
+        from embodigen.gameplay.llm import LLMError
+        from embodigen.real2sim.estimate import TwinEstimator
+
+        est = TwinEstimator()
+        est.check()  # before touching the photo: no key, no work
+        try:
+            twin = est.estimate(Path(args.image))
+        except LLMError as exc:
+            raise SystemExit(f"estimate failed: {exc}") from None
+    else:
+        if args.cube_xy is None or args.bin_xy is None:
+            raise SystemExit("--cube-xy and --bin-xy go together")
+        twin = Twin(
+            cube_xy=tuple(args.cube_xy), bin_xy=tuple(args.bin_xy),
+            cube_half=args.cube_edge_cm / 200.0,
+            cube_rgb=_color(args.cube_color, Twin.__dataclass_fields__["cube_rgb"].default),
+            bin_rgb=_color(args.bin_color, Twin.__dataclass_fields__["bin_rgb"].default),
+            table_rgb=_color(args.table_color, Twin.__dataclass_fields__["table_rgb"].default),
+            source={"kind": "manual", "estimated": False},
+        )
+    found = problems(twin, robot)
+    print(f"twin         {twin.twin_id} ({'model-estimated from a photo' if twin.source.get('estimated') else 'measured by hand'})")
+    print(f"cube         x {twin.cube_xy[0]:+.3f} y {twin.cube_xy[1]:+.3f} m, edge {twin.cube_half * 200:.1f} cm, rgb {twin.cube_rgb}")
+    print(f"bin          x {twin.bin_xy[0]:+.3f} y {twin.bin_xy[1]:+.3f} m, rgb {twin.bin_rgb}")
+    if "confidence" in twin.source:
+        print(f"confidence   {twin.source['confidence']} (the model's own; check the numbers against the scene)")
+    if found:
+        for p in found:
+            print(f"problem      {p}")
+        print("not written: the planner could not run this scene")
+        return 1
+    print(f"written      {write_twin(twin, args.out)}")
+    print(f"next         embodigen gen --task \"...\" --twin {args.out} --episodes 16 --jitter 0.03 --out out-twin")
+    return 0
+
+
 def _cmd_world(args: argparse.Namespace) -> int:
     from embodigen.world4d.world import write_world
 
@@ -460,6 +530,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=25.0,
         help="millimetres of simulated geometry drift on the first render attempt (0 disables)",
     )
+    g.add_argument("--twin", default="", help="a digital twin (embodigen real2sim): scenes come from it, not the template")
+    g.add_argument("--jitter", type=float, default=0.0,
+                   help="with --twin: randomise object poses, colours and the camera by up to this many metres "
+                        "(0.02-0.04 is a useful range); 0 reproduces the twin exactly")
     g.add_argument("--no-pack", action="store_true", help="skip writing the dataset")
     g.add_argument("--episodes", "-n", type=int, default=1,
                    help="number of episodes, on consecutive seeds starting at --seed")
@@ -558,6 +632,19 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--overwrite", action="store_true", help="replace an earlier export in --out")
     ex.add_argument("--workers", "-j", type=int, default=0)
     ex.set_defaults(func=_cmd_export)
+
+    r2 = sub.add_parser("real2sim", help="make a digital twin of a tabletop (measured, or estimated from a photo)")
+    r2.add_argument("--image", default="", help="a photo of the scene: a cloud vision model estimates the twin (needs your API key)")
+    r2.add_argument("--cube-xy", nargs=2, type=float, metavar=("X", "Y"), default=None,
+                    help="measured: cube centre in metres, robot-table frame (origin below the base, +x forward, +y left)")
+    r2.add_argument("--bin-xy", nargs=2, type=float, metavar=("X", "Y"), default=None, help="measured: bin centre in metres")
+    r2.add_argument("--cube-edge-cm", type=float, default=4.0)
+    r2.add_argument("--cube-color", default="", help="name (red, blue, ...) or R,G,B")
+    r2.add_argument("--bin-color", default="", help="name or R,G,B")
+    r2.add_argument("--table-color", default="", help="name or R,G,B")
+    r2.add_argument("--robot", default="franka")
+    r2.add_argument("--out", default="data/twins/twin.json")
+    r2.set_defaults(func=_cmd_real2sim)
 
     wo = sub.add_parser("world", parents=[wd], help="build a 4D Gaussian-splat world from a prompt or a recording")
     wo.add_argument("--task", help="prompt: generate a robot episode for it, then its world")

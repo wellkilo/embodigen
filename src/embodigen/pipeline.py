@@ -52,9 +52,11 @@ class PipelineConfig:
     photoreal_backend: str = "mock"
     validate_backend: str = "keypoint"
     pack_backend: str = "lerobot"
+    twin: str = ""  # digital-twin file: scenes come from it instead of the template sampler
+    jitter: float = 0.0  # metres of randomisation around the twin (0: the twin exactly)
 
     def fingerprint(self) -> str:
-        payload = {
+        payload: dict[str, Any] = {
             "threshold_mm": self.threshold_mm,
             "fps": self.fps,
             "resolution": self.resolution,
@@ -69,15 +71,22 @@ class PipelineConfig:
                 self.pack_backend,
             ],
         }
+        if self.twin:
+            payload["twin"] = hashlib.sha256(Path(self.twin).read_bytes()).hexdigest()[:16]
+            payload["jitter"] = self.jitter
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
 class Pipeline:
     def __init__(self, config: PipelineConfig | None = None, **overrides: Any) -> None:
         self.config = config or PipelineConfig(**overrides)
-        self.scene_gen = resolve("scene", self.config.scene_backend)(
-            Camera().at_resolution(self.config.resolution)
-        )
+        camera = Camera().at_resolution(self.config.resolution)
+        if self.config.twin:
+            from embodigen.real2sim.twin import TwinSceneGenerator, load_twin
+
+            self.scene_gen = TwinSceneGenerator(camera, load_twin(self.config.twin), self.config.jitter)
+        else:
+            self.scene_gen = resolve("scene", self.config.scene_backend)(camera)
         self.trajectory_gen = resolve("trajectory", self.config.trajectory_backend)(
             fps=self.config.fps
         )
@@ -186,6 +195,7 @@ class Pipeline:
 def summarize(episode: Episode) -> dict[str, Any]:
     rep = episode.fidelity
     root = getattr(episode, "root", None)
+    twin = next((n.removeprefix("twin=") for n in episode.scene.notes if n.startswith("twin=")), None)
     return {
         "episode_id": episode.episode_id,
         "seed": episode.task.seed,
@@ -195,6 +205,7 @@ def summarize(episode: Episode) -> dict[str, Any]:
         "attempts": episode.provenance.attempts,
         "frames": len(episode.gt),
         "path": str(root) if root is not None else None,
+        **({"twin": twin} if twin else {}),
     }
 
 
