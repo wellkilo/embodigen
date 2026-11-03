@@ -107,6 +107,9 @@ BACKENDS: dict[str, dict[str, str]] = {
     "video": {
         "pyav": "embodigen.gameplay.video:PyAVFrames",
     },
+    "gym": {
+        "mujoco": "embodigen.gym.mujoco_env:PickPlaceEnv",
+    },
 }
 
 

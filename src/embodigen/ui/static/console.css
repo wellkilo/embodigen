@@ -326,3 +326,38 @@ label.inline input { width: 80px; }
   .cards { grid-template-columns: minmax(0, 1fr); }
   .top { padding: 10px 16px; position: static; }
 }
+
+/* ---------- interactive Gym */
+.layout.gym-open { grid-template-columns: 150px minmax(0, 1fr); }
+.layout.gym-open > .job { display: none; }
+.gym-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.gym-eyebrow { display: block; color: var(--accent); font: 10px var(--mono); letter-spacing: .16em; margin-bottom: 10px; }
+.gym-layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 20px; }
+.gym-view { min-width: 0; }
+#gym-canvas { display: block; width: 100%; aspect-ratio: 3 / 2; height: auto; border: 1px solid var(--line-strong); border-radius: 12px; background: #091a21; touch-action: none; }
+.gym-toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.gym-toolbar button { padding: 8px 13px; }
+.gym-metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 10px; margin: 14px 0; background: var(--surface); }
+.gym-metrics > div { padding: 12px 14px; border-right: 1px solid var(--line); }
+.gym-metrics > div:last-child { border: 0; }
+.gym-metrics span { display: block; color: var(--muted); font-size: 11px; }
+.gym-metrics b { display: block; font: 18px var(--mono); margin-top: 5px; }
+.gym-sidebar { display: flex; flex-direction: column; gap: 14px; }
+.gym-pad { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.gym-pad button { touch-action: none; user-select: none; padding: 9px; }
+.gym-pad button.on { background: rgba(var(--accent-rgb), .2); border-color: var(--accent); }
+#gym-status { white-space: nowrap; }
+#gym-status.ok { color: var(--ok); }
+#gym-status.bad { color: var(--bad); }
+#gym-feedback { min-height: 24px; }
+@media (max-width: 1000px) {
+  .gym-layout { grid-template-columns: minmax(0, 1fr); }
+  .gym-sidebar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .layout.gym-open { display: block; }
+  .gym-sidebar { display: flex; }
+  .gym-metrics { grid-template-columns: repeat(2, 1fr); }
+  .gym-metrics b { font-size: 16px; }
+  .gym-heading { display: block; margin-bottom: 12px; }
+}

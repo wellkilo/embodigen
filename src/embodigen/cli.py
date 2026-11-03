@@ -492,6 +492,50 @@ def _cmd_ui(args: argparse.Namespace) -> int:
     return serve(Path(args.root), host=args.host, port=args.port, open_browser=args.open)
 
 
+def _cmd_gym(args: argparse.Namespace) -> int:
+    from embodigen.gym import available
+
+    if args.worker:
+        from embodigen.gym.worker import run
+
+        return run()
+    if not available():
+        raise SystemExit("交互 Gym 需要可选依赖：pip install -e '.[gym]'")
+    if args.demo:
+        from embodigen.gym.worker import Session
+
+        if not 1 <= args.episodes <= 1000 or args.seed < 0:
+            raise SystemExit("--episodes must be in 1..1000; --seed must be non-negative")
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        paths = [out / f"pick-place-{args.seed + i:04d}.json" for i in range(args.episodes)]
+        if any(path.exists() for path in paths):
+            raise SystemExit("rollout file already exists; choose a different --out or --seed")
+        session, successes = Session(), 0
+        try:
+            for i, path in enumerate(paths):
+                state = session.request({"op": "reset", "config": {
+                    "seed": args.seed + i, "twin": args.twin or None, "jitter": args.jitter,
+                    "randomize": not args.no_randomize}})
+                while not state["done"]:
+                    state = session.request({"op": "step", "episode": state["episode"], "demo": True})
+                success = state["info"]["is_success"]
+                successes += int(success)
+                with path.open("x", encoding="utf-8") as fh:
+                    json.dump(session.recording, fh, ensure_ascii=False, allow_nan=False)
+                print(f"{path.name}  {state['steps']} steps  return {state['return']:.4f}  "
+                      f"{'SUCCESS' if success else state['info']['reason']}")
+        finally:
+            session.close()
+        print(f"scripted demo: {successes}/{args.episodes} successes; recordings -> {out}")
+        return 0 if successes == args.episodes else 1
+    if args.twin or args.jitter:
+        raise SystemExit("网页模式请在 Gym 页面填写孪生路径和随机化范围；命令行批量使用 --demo --twin")
+    from embodigen.ui.server import serve
+
+    return serve(Path(args.root), port=args.port, open_browser=args.open, tab="gym")
+
+
 def _cmd_ledger(args: argparse.Namespace) -> int:
     path = Path(args.path)
     path = path / "ledger.json" if path.is_dir() else path
@@ -690,6 +734,20 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--open", action="store_true", help="open the page in a browser")
     ui.set_defaults(func=_cmd_ui)
+
+    gy = sub.add_parser("gym", help="interactive MuJoCo pick-and-place Gym (install .[gym])")
+    gy.add_argument("--root", default=".", help="console workspace")
+    gy.add_argument("--port", type=int, default=8765)
+    gy.add_argument("--open", action="store_true", help="open the Gym page in a browser")
+    gy.add_argument("--demo", action="store_true", help="run a scripted policy and save interaction transitions")
+    gy.add_argument("--episodes", type=int, default=1)
+    gy.add_argument("--seed", type=int, default=0)
+    gy.add_argument("--out", default="data/gym")
+    gy.add_argument("--twin", default="", help="--demo: existing tabletop twin JSON")
+    gy.add_argument("--jitter", type=float, default=0.0)
+    gy.add_argument("--no-randomize", action="store_true", help="--demo: disable appearance/physics/control randomisation")
+    gy.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    gy.set_defaults(func=_cmd_gym)
 
     b = sub.add_parser("backends", help="list registered backends and robots")
     b.set_defaults(func=_cmd_backends)

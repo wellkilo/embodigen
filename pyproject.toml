@@ -25,6 +25,8 @@ sim = ["mani-skill>=3.0.0", "sapien>=3.0.0", "torch>=2.1"]
 photoreal = ["torch>=2.1", "diffusers>=0.27", "transformers>=4.38"]
 lerobot = ["pyarrow>=14", "pillow>=10"]
 env = ["vizdoom>=1.2.3"]
+# Interactive Cartesian gripper with CPU rigid-body contact dynamics.
+gym = ["gymnasium>=1.0,<2", "mujoco>=3.2,<4", "numpy>=1.26"]
 # zstd-compressed MCAP chunks (D2E); Python 3.14+ reads them with the standard library.
 d2e = ["zstandard>=0.22; python_version < '3.14'"]
 # Decode frames kept inside videos (D2E .mkv, P2P/VPT .mp4) for the alignment check.

@@ -18,7 +18,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-0.3.0-2f7bff" />
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-3b7ddd" />
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-16a34a" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-162_passing-16a34a" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-172_tests-16a34a" />
   <a href="https://wellkilo.github.io/embodigen/"><img alt="showcase" src="https://img.shields.io/badge/showcase-online-2f7bff" /></a>
 </p>
 
@@ -26,6 +26,7 @@
   <a href="https://wellkilo.github.io/embodigen/"><b>在线展示</b></a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#网页控制台">网页控制台</a> ·
+  <a href="#交互-gym机器人自己尝试">交互 Gym</a> ·
   <a href="#4d-世界从提示到-3dgs-到网页">4D 世界</a> ·
   <a href="#虚拟世界管线gamescaling">虚拟世界管线</a> ·
   <a href="#机器人管线它是什么">机器人管线</a> ·
@@ -87,6 +88,75 @@ written      out/episodes/franka-0000
 `attempts 2`：第一次渲染被默认注入 25 mm 几何漂移（`--drift`，用来演示闭环），验证器拒绝，第二次加严几何条件后通过。用 `--drift 0` 可关闭注入。
 
 </details>
+
+## 交互 Gym：机器人自己尝试
+
+```bash
+pip install -e '.[gym]'       # 可选：Gymnasium + MuJoCo + NumPy，原有管线仍然零依赖
+embodigen gym --open          # 本地网页：交互 Gym；也可以从 embodigen ui 的侧栏进入
+```
+
+这是**真实 MuJoCo 接触物理 + 三轴平行夹爪**的桌面抓放环境，不是 Franka 全机械臂，也不是预设轨迹回放。方块是自由刚体，靠双指摩擦抓起；松手后按重力掉落，没有焊接约束或瞬移。
+
+网页里先点「重置场景」，再点画面用 **W/S 前后、A/D 左右、R/F 升降、空格开合夹爪**，也可按住方向按钮。「单步」推进 50 ms；「开始控制 / 暂停」控制连续推进，失去窗口焦点或切换分页会自动暂停。页面显示每步和累计奖励、夹爪开度、接触 / 成功状态，支持俯视、时间轴回放和 JSON 回合下载。「演示策略」会重置当前种子并运行一个基于当前状态的脚本控制器，**不是训练后的模型**。
+
+场景设置可填现有的 `data/twins/desk.json` 和 `jitter`，保留实测 / 模型估计来源；也可随机生成桌面。`randomize` 控制颜色、相机、方块质量、接触摩擦和控制增益；相同 `reset(seed=...)` 重现相同场景与物理参数。孪生的方块和盒子中心必须在本 Gym 的 ±0.29 m 工作区内，超出会拒绝，不会挪进来。
+
+Python 训练接口是标准 Gymnasium Env：
+
+```python
+from embodigen.gym import make
+
+env = make(max_steps=400, reward_mode="dense")
+obs, info = env.reset(seed=0)
+try:
+    for _ in range(400):
+        action = env.action_space.sample()  # 换成 policy(obs)，这里不替用户训练模型
+        obs, reward, terminated, truncated, info = env.step(action)
+        if terminated or truncated:
+            break
+finally:
+    env.close()
+```
+
+或显式注册后使用 `gymnasium.make`：
+
+```python
+import gymnasium as gym
+from embodigen.gym import register_envs
+
+register_envs()
+env = gym.make("EmbodiGen/PickPlace-v0", observation_mode="rgb", render_mode="rgb_array")
+# reset / step 的 obs 还带 rgb: uint8[128, 128, 3]，env.render() 返回同一相机的 RGB。
+# 使用完毕调用 env.close()。
+```
+
+| 接口 | 含义 |
+|---|---|
+| `action: float[4]`，每维 `[-1,1]` | X/Y/Z 移动和**绝对开度目标**；前三维每步最多约 15 mm（受控制增益影响）；第四维 −1 关、+1 开，0 为半开，不是保持原状 |
+| `obs["observation"]: float64[29]` | MuJoCo `qpos[12] + qvel[11] + ctrl[5] + 连续稳定步数/5`；qpos 顺序为方块自由关节 XYZ + WXYZ 四元数、夹爪 XYZ、左右手指；qvel 对应同一关节顺序（自由关节为 6 维速度） |
+| `achieved_goal` / `desired_goal`: `float64[3]` | 方块中心 / 盒内静置目标中心（米） |
+| `observation_mode="rgb"` | 额外返回物理引擎相机画面；默认 state 模式完全不需要 OpenGL；状态向量含特权真值，训练纯视觉策略时应自行选择输入 |
+| 成功 / 终止 | 方块完整落在盒内 XY 范围，底面支撑在盒底、夹爪松开且无手指接触，并连续 5 步静止；夹着或悬空不算成功 |
+| 失败 / 超时 | 方块离开任务工作区时 `terminated=True`；达到步数上限时 `truncated=True`；结束后必须 reset |
+| `reward_mode="dense"`（默认） | 成功 +10、失败 −2、靠近方块及放置目标的势函数增量，每步 −0.01，夹爪碰桌 / 盒壁额外 −0.02 |
+| `reward_mode="sparse"` | 成功 +1、失败 −1，其余 0；超时为截断 |
+
+无效动作（形状错误、NaN、超出范围）在推进仿真前拒绝。Gymnasium `check_env`、种子重现、真实抓取 / 掉落、成功反例、超时和 HTTP 生命周期都有测试；图形相机通过单独的 RGB 冒烟测试验证。
+
+不打开网页也能运行脚本策略并保存交互数据：
+
+```bash
+embodigen gym --demo --episodes 20 --seed 0 --out data/gym
+embodigen gym --demo --twin data/twins/desk.json --jitter 0.03 --out data/gym-twin
+python -m unittest tests.test_gym -v
+```
+
+`pick-place-0000.json` 记录场景、孪生来源、物理参数、MJCF 模型、初始状态，以及逐步的 `(observation, action, reward, next_observation, terminated, truncated)` 和用于回放的几何位姿。已有文件不会覆盖。它是**独立的交互 rollout 格式**，动作是归一化 4 维，不等同于原机器人管线的 7 维标签；没有经过照片级忠实度闸门，不会放进 `out/episodes/`。导出的 JSON 不含 RGB 帧；需要图像训练数据时，通过 Python 的 RGB 模式采集。
+
+验证环境：Apple Silicon、MuJoCo 3.17.0、Gymnasium 1.4.0。脚本策略在种子 0–19 的 20 个随机化场景里全部完成放置；这只验证交互环境和脚本，不代表学到了策略或具有真机迁移能力。没有模型训练、真实机器人控制或任意房间重建。
+
+网页仍由 `embodigen ui` 的本地令牌保护。物理状态由独立的 `embodigen gym --worker` 子进程持有；网页只发 reset / step 请求并显示引擎位姿，停止控制台会清理子进程。RGB 渲染需要系统 OpenGL 上下文；无显示的 Linux 可按 MuJoCo 的安装说明配置 EGL / OSMesa，网页和 state 训练模式无需它。
 
 ## 网页控制台
 
@@ -614,6 +684,8 @@ embodigen index --out out      # 打印每条的 p95、重试次数、判定，�
 | `embodigen world --task "..." \| --rollout <world> \| --recording <dir> \| --episode <dir>` | 生成 4D 高斯世界（3DGS），在控制台「4D 世界」里看 |
 | `embodigen ledger <dir>` | 打印 curate 或 build 的账本 |
 | `embodigen llm setup` / `llm check --ping` | 填入并检查云端模型的服务商、模型名和 API key（`annotator = "llm"` 必须先做这一步） |
+| `embodigen gym [--open]` | 打开交互 Gym：MuJoCo 抓放、键盘控制、奖励、回放与导出（需 `[gym]`） |
+| `embodigen gym --demo --episodes N` | 脚本策略与批量交互 rollout（不会训练模型） |
 | `embodigen ui [--port 8765]` | 本地网页控制台：上面这些步骤都能在浏览器里点按钮完成，带实时日志和停止按钮 |
 | `embodigen preview --recording <dir> [--start 秒] [--max-frames N]` | 把一条录像画成带键鼠条的 GIF；数据集录像从视频里解码（需要 `[video]`），按原始采集比例还原画面 |
 
@@ -653,7 +725,7 @@ class WanPhotorealizer:
 ## 开发
 
 ```bash
-make test       # 162 个单元测试（ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
+make test       # 172 个测试（Gym、ViZDoom、zstd、PyAV 和真实样本相关的测试在缺依赖时跳过）
 make demo       # 单条生成 + 验证
 make batch      # 8 条批量 + 账本
 make worlds     # 虚拟世界：录制 → curate → build 参考网格（多核机器约 1 分钟）
