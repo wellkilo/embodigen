@@ -75,3 +75,17 @@ jobs:
         run: pip install -e '.[env]'
       - name: ViZDoom rollout through the gate
         run: python -m unittest tests.test_gameplay_vizdoom -v
+
+  gym:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install with the [gym] extra
+        run: pip install -e '.[gym]'
+      - name: Gymnasium contract, contact physics, and web worker
+        run: python -m unittest tests.test_gym -v
+      - name: scripted interaction rollout
+        run: embodigen gym --demo --episodes 20 --out data/gym

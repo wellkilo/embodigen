@@ -5,7 +5,9 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
   /* token: from the launch link's #token=..., kept for this tab only */
-  const fromHash = new URLSearchParams(location.hash.slice(1)).get("token");
+  const launchParams = new URLSearchParams(location.hash.slice(1));
+  const fromHash = launchParams.get("token");
+  const launchTab = launchParams.get("tab");
   if (fromHash) {
     try { sessionStorage.setItem("embodigen-token", fromHash); } catch (e) { /* private mode */ }
     history.replaceState(null, "", location.pathname);
@@ -49,7 +51,11 @@
   }
 
   /* ------------------------------------------------------------------ tabs */
+  const gymView = window.EmbodiGym({ api, toast });
   function show(tab) {
+    if (!$$(".tabs button").some((b) => b.dataset.tab === tab)) tab = "start";
+    gymView.visibility(tab === "gym");
+    $(".layout").classList.toggle("gym-open", tab === "gym");
     $$(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
     $$(".page").forEach((p) => p.classList.toggle("on", p.dataset.page === tab));
     if (tab === "data") loadDatasets();
@@ -763,6 +769,7 @@
   /* ------------------------------------------------------------------ boot */
   let start = "start";
   try { start = localStorage.getItem("embodigen-tab") || start; } catch (e) { /* ignore */ }
+  if (launchTab) start = launchTab;
   show(start);
   if (!TOKEN) {
     toast("缺少访问令牌：请用 embodigen ui 启动时打印的完整链接打开（含 #token=…）");

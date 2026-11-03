@@ -21,6 +21,7 @@
     <button data-tab="model">模型设置<span class="dot" id="model-dot"></span></button>
     <button data-tab="robot">机器人</button>
     <button data-tab="world">4D 世界</button>
+    <button data-tab="gym">交互 Gym</button>
   </nav>
 
   <main>
@@ -266,6 +267,53 @@
       </div>
     </section>
 
+    <section data-page="gym" class="page">
+      <div class="gym-heading"><div><span class="gym-eyebrow">EMBODIGEN / INTERACTIVE LAB</span>
+        <h1>抓取 · 移动 · 放置</h1><p class="lede">把方块放进盒子。每一步动作都会推进 MuJoCo 物理仿真。</p></div>
+        <span class="pill" id="gym-status" aria-live="polite">尚未开始</span></div>
+      <div class="gym-layout">
+        <div class="gym-view">
+          <canvas id="gym-canvas" width="960" height="640" tabindex="0" aria-label="交互 Gym 场景：W S 前后，A D 左右，R F 升降，空格开合夹爪"></canvas>
+          <div class="gym-toolbar">
+            <button class="run" id="gym-play" disabled>开始控制</button>
+            <button class="ghost" id="gym-step" disabled>单步</button>
+            <button class="ghost" id="gym-demo" disabled>演示策略</button>
+            <button class="ghost" id="gym-camera">俯视 / 透视</button>
+            <button class="ghost" id="gym-export" disabled>导出回合</button>
+          </div>
+          <div class="gym-metrics" aria-live="off">
+            <div><span>控制步</span><b id="gym-steps">—</b></div>
+            <div><span>本步奖励</span><b id="gym-reward">—</b></div>
+            <div><span>累计奖励</span><b id="gym-return">—</b></div>
+            <div><span>夹爪开度</span><b id="gym-opening">—</b></div>
+          </div>
+          <div class="scrub"><span class="hint">回放</span><input id="gym-frame" type="range" min="0" max="0" value="0" aria-label="回合回放帧" disabled /><span id="gym-frame-label" class="hint">0 / 0</span></div>
+          <p class="hint" id="gym-feedback">重置场景后，点击画面使用键盘，或按住右侧的方向按钮。</p>
+        </div>
+        <div class="gym-sidebar">
+          <form class="card" id="gym-config">
+            <h2>场景设置</h2>
+            <div class="row"><label>随机种子<input id="gym-seed" type="number" min="0" max="2147483647" value="0" required /></label>
+              <label>步数上限<input id="gym-limit" type="number" min="1" max="1000" value="400" required /></label></div>
+            <label>数字孪生 <input id="gym-twin" placeholder="可选：data/twins/desk.json" /></label>
+            <label>孪生位置随机化（米）<input id="gym-jitter" type="number" min="0" max="0.1" step="0.005" value="0" /></label>
+            <label class="check"><input id="gym-randomize" type="checkbox" checked /> 随机化颜色、相机、质量、摩擦和控制增益</label>
+            <label>奖励<select id="gym-reward-mode"><option value="dense">进度奖励 + 成功奖励</option><option value="sparse">仅成功 / 失败</option></select></label>
+            <div class="row"><button class="run" type="submit" id="gym-reset">重置场景</button><button class="ghost" type="button" id="gym-new">换个场景</button></div>
+          </form>
+          <div class="card gym-controls">
+            <h2>手动控制</h2><p class="hint">W / S：X 轴 · A / D：Y 轴<br />R / F：升降 · 空格：开合夹爪</p>
+            <div class="gym-pad"><button class="ghost" data-gym-move="2,1">R 升高</button><button class="ghost" data-gym-move="0,1">W 前进</button>
+              <button class="ghost" data-gym-move="1,1">A 左移</button><button class="ghost" data-gym-move="1,-1">D 右移</button>
+              <button class="ghost" data-gym-move="2,-1">F 降低</button><button class="ghost" data-gym-move="0,-1">S 后退</button></div>
+            <button class="ghost" id="gym-grip" disabled>夹爪：张开</button>
+            <p class="hint">方向以场景的世界坐标轴为准。动作结束后按「暂停」；单步推进 50 ms 仿真时间。</p>
+          </div>
+          <p class="hint">物理后端：MuJoCo · 三轴平行夹爪<br />网页显示引擎位姿；Python 接口还可返回相机 RGB。演示是脚本策略，并非训练后的模型。</p>
+        </div>
+      </div>
+    </section>
+
     <!-- robot -->
     <section data-page="robot" class="page">
       <h1>机器人数据</h1>
@@ -303,6 +351,7 @@
 <datalist id="dl-curated"></datalist>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="/static/splat.js"></script>
+<script src="/static/gym.js"></script>
 <script src="/static/console.js"></script>
 </body>
 </html>

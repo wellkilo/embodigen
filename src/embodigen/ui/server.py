@@ -699,9 +699,17 @@ class Console(ThreadingHTTPServer):
         super().__init__(addr, Handler)
         self.ws = Workspace(root)
         self.runner = Runner(self.ws.root)
+        from embodigen.ui.gym_session import GymSession
+
+        self.gym = GymSession(self.ws.root, self.runner.env)
         self.token = token
         self.quiet = quiet
         self.any_host = addr[0] not in LOCAL_HOSTS
+
+    def server_close(self) -> None:
+        if hasattr(self, "gym"):
+            self.gym.close()
+        super().server_close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -814,6 +822,8 @@ class Handler(BaseHTTPRequestHandler):
             })
         if path == "/api/datasets":
             return self._json(ws.datasets())
+        if path == "/api/gym/state":
+            return self._gym({"op": "state"})
         if path == "/api/recordings":
             return self._json(ws.recordings(arg("dir")))
         if path == "/api/ledger":
@@ -845,6 +855,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post(self, path: str) -> None:
         ws, runner = self.server.ws, self.server.runner
+        if path == "/api/gym/reset":
+            p = self._body()
+            if not isinstance(p.get("randomize", True), bool):
+                raise BadRequest("randomize 需要是布尔值")
+            cfg = {"seed": _num(p, "seed", 0, 0, 2**31 - 1, int),
+                   "max_steps": _num(p, "max_steps", 400, 1, 1000, int),
+                   "randomize": p.get("randomize", True),
+                   "reward_mode": _choice(p, "reward_mode", "dense", ("dense", "sparse")),
+                   "jitter": _num(p, "jitter", 0, 0, .1)}
+            twin = _text(p, "twin", required=False)
+            if twin:
+                cfg["twin"] = str(ws.inside(twin))
+            return self._gym({"op": "reset", "config": cfg})
+        if path in ("/api/gym/step", "/api/gym/recording"):
+            body = self._body()
+            return self._gym({"op": path.rsplit("/", 1)[-1], "episode": body.get("episode"),
+                              "action": body.get("action"), "demo": body.get("demo", False)})
         if path == "/api/run":
             body = self._body()
             action = str(body.get("action", ""))
@@ -870,6 +897,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(save_llm(self._body()))
         return self._error(HTTPStatus.NOT_FOUND, "not found")
 
+    def _gym(self, command: dict) -> None:
+        try:
+            result = self.server.gym.request(command)
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from None
+        return self._json(result)
+
     def _file(self, rel: str) -> None:
         path = self.server.ws.inside(rel)
         ctype = MEDIA.get(path.suffix.lower())
@@ -889,7 +923,8 @@ def make_server(root: Path, host: str = "127.0.0.1", port: int = 8765, token: st
     return Console((host, port), Path(root), token or secrets.token_urlsafe(24), quiet=quiet)
 
 
-def serve(root: Path, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = False) -> int:
+def serve(root: Path, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = False,
+          tab: str = "") -> int:
     if signal.getsignal(signal.SIGINT) is signal.SIG_IGN:
         # Started in the background (`... &`): SIGINT is ignored and jobs would
         # inherit that, so Stop could not send them Ctrl+C. Handled signals
@@ -901,6 +936,8 @@ def serve(root: Path, host: str = "127.0.0.1", port: int = 8765, open_browser: b
         raise SystemExit(f"cannot listen on {host}:{port}: {exc} (try --port)") from None
     shown = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
     url = f"http://{shown}:{server.server_address[1]}/#token={server.token}"
+    if tab:
+        url += f"&tab={tab}"
     print(f"embodigen console  {url}")
     print(f"workspace          {server.ws.root}")
     if server.any_host:
@@ -918,4 +955,5 @@ def serve(root: Path, host: str = "127.0.0.1", port: int = 8765, open_browser: b
     finally:
         server.runner.stop_all()
         server.server_close()
+    return 0
     return 0
